@@ -1,0 +1,200 @@
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView } from 'obsidian';
+import { ChatView } from './ChatView';
+import './styles.css';
+
+export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
+
+interface LocalLLMSettings {
+	apiEndpoint: string;
+	modelName: string;
+	provider: 'ollama' | 'lmstudio' | 'vllm' | 'custom';
+	apiKey: string;
+	maxTokens: number;
+	temperature: number;
+}
+
+const DEFAULT_SETTINGS: LocalLLMSettings = {
+	apiEndpoint: 'http://localhost:11434/api/chat',
+	modelName: 'llama2',
+	provider: 'ollama',
+	apiKey: '',
+	maxTokens: 1000,
+	temperature: 0.7
+};
+
+export default class LocalLLMPlugin extends Plugin {
+	settings: LocalLLMSettings;
+
+	async onload() {
+		console.log('Loading Local LLM Chat plugin');
+
+		await this.loadSettings();
+
+		// Register the view
+		this.registerView(
+			CHAT_VIEW_TYPE,
+			(leaf) => new ChatView(leaf)
+		);
+
+		// Add ribbon icon to open chat
+		this.addRibbonIcon('message-circle', 'Open Local LLM Chat', () => {
+			this.activateView();
+		});
+
+		// Add command to open chat
+		this.addCommand({
+			id: 'open-local-llm-chat',
+			name: 'Open Local LLM Chat',
+			callback: () => {
+				this.activateView();
+			}
+		});
+
+		// Add settings tab
+		this.addSettingTab(new LocalLLMSettingTab(this.app, this));
+	}
+
+	async onunload() {
+		console.log('Unloading Local LLM Chat plugin');
+	}
+
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+
+	async activateView() {
+		const { workspace } = this.app;
+
+		let leaf: WorkspaceLeaf | null = null;
+		const leaves = workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+
+		if (leaves.length > 0) {
+			// A leaf with our view already exists, use that
+			leaf = leaves[0];
+		} else {
+			// Create a new leaf in the right sidebar
+			leaf = workspace.getRightLeaf(false);
+			if (leaf) {
+				await leaf.setViewState({
+					type: CHAT_VIEW_TYPE,
+					active: true,
+				});
+			}
+		}
+
+		// Reveal the leaf in case it is in a collapsed sidebar
+		if (leaf) {
+			workspace.revealLeaf(leaf);
+		}
+	}
+}
+
+class LocalLLMSettingTab extends PluginSettingTab {
+	plugin: LocalLLMPlugin;
+
+	constructor(app: App, plugin: LocalLLMPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+
+		containerEl.empty();
+
+		containerEl.createEl('h2', { text: 'Local LLM Chat Settings' });
+
+		new Setting(containerEl)
+			.setName('Provider')
+			.setDesc('Select your local LLM provider')
+			.addDropdown(dropdown => dropdown
+				.addOption('ollama', 'Ollama')
+				.addOption('lmstudio', 'LM Studio')
+				.addOption('vllm', 'vLLM')
+				.addOption('custom', 'Custom')
+				.setValue(this.plugin.settings.provider)
+				.onChange(async (value) => {
+					this.plugin.settings.provider = value as any;
+					await this.plugin.saveSettings();
+					this.display(); // Refresh to show provider-specific settings
+				}));
+
+		new Setting(containerEl)
+			.setName('API Endpoint')
+			.setDesc('The endpoint URL for your local LLM API')
+			.addText(text => text
+				.setPlaceholder('http://localhost:11434/api/chat')
+				.setValue(this.plugin.settings.apiEndpoint)
+				.onChange(async (value) => {
+					this.plugin.settings.apiEndpoint = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Model Name')
+			.setDesc('The model name to use for chat completions')
+			.addText(text => text
+				.setPlaceholder('llama2')
+				.setValue(this.plugin.settings.modelName)
+				.onChange(async (value) => {
+					this.plugin.settings.modelName = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('API Key (Optional)')
+			.setDesc('API key if required by your LLM provider')
+			.addText(text => text
+				.setPlaceholder('')
+				.setValue(this.plugin.settings.apiKey)
+				.onChange(async (value) => {
+					this.plugin.settings.apiKey = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Max Tokens')
+			.setDesc('Maximum number of tokens in the response')
+			.addSlider(slider => slider
+				.setLimits(100, 4000, 100)
+				.setValue(this.plugin.settings.maxTokens)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.maxTokens = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Temperature')
+			.setDesc('Controls randomness in the response (0 = deterministic, 1 = very random)')
+			.addSlider(slider => slider
+				.setLimits(0, 2, 0.1)
+				.setValue(this.plugin.settings.temperature)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.temperature = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Add provider-specific help text
+		const helpEl = containerEl.createEl('div', { cls: 'setting-item-description' });
+		helpEl.innerHTML = this.getProviderHelpText(this.plugin.settings.provider);
+	}
+
+	private getProviderHelpText(provider: string): string {
+		switch (provider) {
+			case 'ollama':
+				return '<strong>Ollama Setup:</strong><br>1. Install Ollama from <a href="https://ollama.ai">ollama.ai</a><br>2. Run <code>ollama serve</code><br>3. Pull a model: <code>ollama pull llama2</code>';
+			case 'lmstudio':
+				return '<strong>LM Studio Setup:</strong><br>1. Download LM Studio from <a href="https://lmstudio.ai">lmstudio.ai</a><br>2. Load a model<br>3. Start the local server in the app';
+			case 'vllm':
+				return '<strong>vLLM Setup:</strong><br>1. Install vLLM: <code>pip install vllm</code><br>2. Start server: <code>python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-2-7b-chat-hf</code>';
+			default:
+				return '<strong>Custom Setup:</strong><br>Configure your own LLM endpoint that follows the OpenAI API format.';
+		}
+	}
+} 

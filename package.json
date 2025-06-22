@@ -1,0 +1,30 @@
+{
+  "name": "obsidian-local-llm",
+  "version": "1.0.0",
+  "description": "A plugin for Obsidian that provides a chat interface for local LLMs",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "version": "node version-bump.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "local-llm",
+    "chat",
+    "ai"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.19.1",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.25.5",
+    "obsidian": "^1.8.7",
+    "tslib": "^2.8.1",
+    "typescript": "^5.8.3"
+  }
+}
