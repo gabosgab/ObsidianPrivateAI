@@ -56,10 +56,19 @@ export class LLMService {
 				stream: false
 			};
 
+			console.log('Sending request to:', this.config.apiEndpoint);
+			console.log('Request payload:', JSON.stringify(request, null, 2));
+
 			const response = await this.makeAPIRequest(request);
 			return response.choices[0]?.message?.content || 'No response received';
 		} catch (error) {
 			console.error('Error sending message to LLM:', error);
+			
+			// Provide more specific error messages
+			if (error.message.includes('Failed to fetch')) {
+				throw new Error(`Cannot connect to LLM server at ${this.config.apiEndpoint}. Please check:\n1. Is your LLM server running?\n2. Is the endpoint URL correct?\n3. Are there any firewall/network issues?`);
+			}
+			
 			throw new Error(`Failed to get response from LLM: ${error.message}`);
 		}
 	}
@@ -73,23 +82,51 @@ export class LLMService {
 			headers['Authorization'] = `Bearer ${this.config.apiKey}`;
 		}
 
-		const response = await fetch(this.config.apiEndpoint, {
-			method: 'POST',
-			headers,
-			body: JSON.stringify(request),
-		});
+		console.log('Making API request to:', this.config.apiEndpoint);
+		console.log('Headers:', headers);
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+		try {
+			const response = await fetch(this.config.apiEndpoint, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify(request),
+				// Add timeout and other fetch options
+				signal: AbortSignal.timeout(30000), // 30 second timeout
+			});
+
+			console.log('Response status:', response.status);
+			console.log('Response headers:', response.headers);
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error('API Error Response:', errorText);
+				throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+			}
+
+			const responseData = await response.json();
+			console.log('Response data:', responseData);
+			return responseData;
+		} catch (error) {
+			console.error('Fetch error details:', error);
+			
+			// Handle specific error types
+			if (error.name === 'AbortError') {
+				throw new Error('Request timed out after 30 seconds');
+			}
+			
+			if (error.message.includes('Failed to fetch')) {
+				throw new Error(`Network error: ${error.message}`);
+			}
+			
+			throw error;
 		}
-
-		return await response.json();
 	}
 
 	// Helper method to test connection
-	async testConnection(): Promise<boolean> {
+	async testConnection(): Promise<{ success: boolean; error?: string }> {
 		try {
+			console.log('Testing connection to:', this.config.apiEndpoint);
+			
 			const testRequest: ChatRequest = {
 				messages: [{ role: 'user', content: 'Hello' }],
 				model: this.config.modelName,
@@ -97,22 +134,29 @@ export class LLMService {
 			};
 
 			await this.makeAPIRequest(testRequest);
-			return true;
+			return { success: true };
 		} catch (error) {
 			console.error('Connection test failed:', error);
-			return false;
+			return { 
+				success: false, 
+				error: error.message 
+			};
 		}
 	}
 
 	// Method to get supported models (if the API supports it)
 	async getAvailableModels(): Promise<string[]> {
 		try {
-			const response = await fetch(`${this.config.apiEndpoint.replace('/chat/completions', '/models')}`, {
+			const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
+			console.log('Fetching models from:', modelsEndpoint);
+			
+			const response = await fetch(modelsEndpoint, {
 				method: 'GET',
 				headers: {
 					'Content-Type': 'application/json',
 					...(this.config.apiKey && { 'Authorization': `Bearer ${this.config.apiKey}` })
-				}
+				},
+				signal: AbortSignal.timeout(10000), // 10 second timeout
 			});
 
 			if (!response.ok) {
@@ -125,6 +169,31 @@ export class LLMService {
 			console.error('Failed to fetch available models:', error);
 			return [];
 		}
+	}
+
+	// Method to validate configuration
+	validateConfig(): { valid: boolean; errors: string[] } {
+		const errors: string[] = [];
+		
+		if (!this.config.apiEndpoint) {
+			errors.push('API endpoint is required');
+		}
+		
+		if (!this.config.modelName) {
+			errors.push('Model name is required');
+		}
+		
+		// Validate URL format
+		try {
+			new URL(this.config.apiEndpoint);
+		} catch {
+			errors.push('Invalid API endpoint URL format');
+		}
+		
+		return {
+			valid: errors.length === 0,
+			errors
+		};
 	}
 }
 

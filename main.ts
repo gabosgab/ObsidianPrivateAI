@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice } from 'obsidian';
 import { ChatView } from './ChatView';
 import './styles.css';
 
@@ -183,6 +183,51 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		// Add provider-specific help text
 		const helpEl = containerEl.createEl('div', { cls: 'setting-item-description' });
 		helpEl.innerHTML = this.getProviderHelpText(this.plugin.settings.provider);
+
+		// Add connection test button
+		const testButton = containerEl.createEl('button', {
+			text: 'Test Connection',
+			cls: 'mod-cta'
+		});
+
+		testButton.addEventListener('click', async () => {
+			testButton.setText('Testing...');
+			testButton.disabled = true;
+
+			try {
+				// Create a temporary LLM service to test
+				const { createLLMService } = await import('./LLMService');
+				const llmService = createLLMService(this.plugin.settings.provider, {
+					apiEndpoint: this.plugin.settings.apiEndpoint,
+					modelName: this.plugin.settings.modelName,
+					apiKey: this.plugin.settings.apiKey,
+					maxTokens: this.plugin.settings.maxTokens,
+					temperature: this.plugin.settings.temperature
+				});
+
+				// Validate config first
+				const validation = llmService.validateConfig();
+				if (!validation.valid) {
+					throw new Error(`Configuration errors:\n${validation.errors.join('\n')}`);
+				}
+
+				// Test connection
+				const result = await llmService.testConnection();
+				
+				if (result.success) {
+					new Notice('✅ Connection successful! Your LLM server is working.');
+					testButton.setText('Test Connection');
+					testButton.disabled = false;
+				} else {
+					throw new Error(result.error || 'Unknown connection error');
+				}
+			} catch (error) {
+				console.error('Connection test failed:', error);
+				new Notice(`❌ Connection failed: ${error.message}`);
+				testButton.setText('Test Connection');
+				testButton.disabled = false;
+			}
+		});
 	}
 
 	private getProviderHelpText(provider: string): string {
