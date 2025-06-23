@@ -31,6 +31,122 @@
   margin-bottom: 5px;
   line-height: 1.4;
 }
+.local-llm-message-assistant .local-llm-message-content {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 10px 0 5px 0;
+    font-weight: 600;
+    color: var(--text-normal);
+  }
+  h1 {
+    font-size: 1.4em;
+  }
+  h2 {
+    font-size: 1.3em;
+  }
+  h3 {
+    font-size: 1.2em;
+  }
+  h4 {
+    font-size: 1.1em;
+  }
+  h5 {
+    font-size: 1.0em;
+  }
+  h6 {
+    font-size: 0.9em;
+  }
+  p {
+    margin: 5px 0;
+  }
+  ul,
+  ol {
+    margin: 5px 0;
+    padding-left: 20px;
+  }
+  li {
+    margin: 2px 0;
+  }
+  pre {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 10px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: "Courier New", monospace;
+    font-size: 0.9em;
+  }
+  code {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-family: "Courier New", monospace;
+    font-size: 0.9em;
+  }
+  code:not(pre code) {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-family: "Courier New", monospace;
+    font-size: 0.9em;
+  }
+  blockquote {
+    border-left: 3px solid var(--interactive-accent);
+    margin: 8px 0;
+    padding-left: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    width: 100%;
+  }
+  th,
+  td {
+    border: 1px solid var(--background-modifier-border);
+    padding: 6px 8px;
+    text-align: left;
+  }
+  th {
+    background-color: var(--background-primary);
+    font-weight: 600;
+  }
+  a {
+    color: var(--text-accent);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  strong {
+    font-weight: 600;
+  }
+  em {
+    font-style: italic;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--background-modifier-border);
+    margin: 10px 0;
+  }
+  input[type=checkbox] {
+    margin-right: 5px;
+  }
+  > *:first-child {
+    margin-top: 0;
+  }
+  > *:last-child {
+    margin-bottom: 0;
+  }
+}
 .local-llm-message-timestamp {
   font-size: 0.75em;
   opacity: 0.7;
