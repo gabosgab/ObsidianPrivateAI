@@ -248,3 +248,31 @@
     align-self: stretch;
   }
 }
+.local-llm-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 0 10px;
+}
+.local-llm-chat-header h4 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+.local-llm-settings-button {
+  background: none;
+  border: none;
+  padding: 4px;
+  margin-left: 8px;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+}
+.local-llm-settings-button:hover {
+  color: var(--interactive-accent);
+}
+.local-llm-settings-button svg {
+  display: block;
+}
