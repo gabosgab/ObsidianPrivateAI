@@ -33,7 +33,7 @@ export default class LocalLLMPlugin extends Plugin {
 		// Register the view
 		this.registerView(
 			CHAT_VIEW_TYPE,
-			(leaf) => new ChatView(leaf)
+			(leaf) => new ChatView(leaf, this)
 		);
 
 		// Add ribbon icon to open chat
