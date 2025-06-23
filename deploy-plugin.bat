@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo   Obsidian Local LLM Plugin Deployer
+echo   Obsidian Local LLM Plugin Deployer BAT
 echo ========================================
 echo.
 
@@ -31,7 +31,7 @@ if not exist "node_modules" (
 
 REM Build the plugin
 echo Building plugin...
-npm run build
+CALL npm run build
 if %errorlevel% neq 0 (
     echo ERROR: Build failed
     pause
@@ -53,20 +53,39 @@ REM Create destination directory if it doesn't exist
 if not exist "%DEST_DIR%" (
     echo Creating destination directory...
     mkdir "%DEST_DIR%"
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to create destination directory
+        pause
+        exit /b 1
+    )
+    echo Destination directory created successfully.
+    echo.
 )
 
 REM Copy necessary files
 echo Copying plugin files...
 copy "main.js" "%DEST_DIR%\" >nul
-copy "manifest.json" "%DEST_DIR%\" >nul
-copy "styles.css" "%DEST_DIR%\" >nul
-
-REM Check if copy was successful
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to copy files
+    echo ERROR: Failed to copy main.js
     pause
     exit /b 1
 )
+
+copy "manifest.json" "%DEST_DIR%\" >nul
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to copy manifest.json
+    pause
+    exit /b 1
+)
+
+copy "styles.css" "%DEST_DIR%\" >nul
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to copy styles.css
+    pause
+    exit /b 1
+)
+
+echo All files copied successfully.
 
 echo.
 echo ========================================
@@ -81,5 +100,3 @@ echo 2. Go to Settings ^> Community Plugins
 echo 3. Enable "Local LLM Chat" plugin
 echo 4. Configure your LLM settings
 echo.
-echo Press any key to exit...
-pause >nul 
