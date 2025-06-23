@@ -18,9 +18,11 @@ export class ChatView extends ItemView {
 	private inputContainer: HTMLElement;
 	private inputElement: HTMLTextAreaElement;
 	private sendButton: HTMLButtonElement;
+	private stopButton: HTMLButtonElement;
 	private llmService: LLMService;
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
+	private currentAbortController: AbortController | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -40,6 +42,7 @@ export class ChatView extends ItemView {
 	async onOpen() {
 		const container = this.containerEl.children[1];
 		container.empty();
+		container.addClass('local-llm-full-height');
 
 		// Header with title and settings button
 		const header = container.createEl('div', { cls: 'local-llm-chat-header' });
@@ -58,13 +61,16 @@ export class ChatView extends ItemView {
 			this.app.commands.executeCommandById('app:open-settings');
 		});
 
-		// Create message container
-		this.messageContainer = container.createEl('div', {
+		// Create main chat container with flexbox layout
+		const chatContainer = container.createEl('div', { cls: 'local-llm-chat-container' });
+
+		// Create message container (scrollable area)
+		this.messageContainer = chatContainer.createEl('div', {
 			cls: 'local-llm-messages'
 		});
 
-		// Create input container
-		this.inputContainer = container.createEl('div', {
+		// Create input container (fixed at bottom)
+		this.inputContainer = chatContainer.createEl('div', {
 			cls: 'local-llm-input-container'
 		});
 
@@ -80,6 +86,12 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-send-button'
 		});
 
+		// Create stop button
+		this.stopButton = this.inputContainer.createEl('button', {
+			text: 'Stop',
+			cls: 'local-llm-stop-button'
+		});
+
 		// Add event listeners
 		this.inputElement.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && !e.shiftKey) {
@@ -90,6 +102,10 @@ export class ChatView extends ItemView {
 
 		this.sendButton.addEventListener('click', () => {
 			this.sendMessage();
+		});
+
+		this.stopButton.addEventListener('click', () => {
+			this.stopStreaming();
 		});
 
 		// Add initial welcome message
@@ -151,8 +167,12 @@ export class ChatView extends ItemView {
 		this.addMessage(userMessage);
 		this.inputElement.value = '';
 
-		// Disable input while streaming
+		// Create abort controller for this request
+		this.currentAbortController = new AbortController();
+
+		// Disable input while streaming and show stop button
 		this.setInputEnabled(false);
+		this.showStopButton(true);
 		this.isStreaming = true;
 
 		// Create streaming assistant message
@@ -182,20 +202,24 @@ export class ChatView extends ItemView {
 					await this.finalizeStreamingMessage(assistantMessage.id);
 					this.isStreaming = false;
 					this.setInputEnabled(true);
+					this.showStopButton(false);
+					this.currentAbortController = null;
 				} else {
 					// Update the streaming message
 					await this.updateStreamingMessage(assistantMessage.id, chunk);
 				}
 			};
 
-			// Call streaming LLM API
-			await this.llmService.sendMessageStream(content, conversationHistory, streamCallback);
+			// Call streaming LLM API with abort signal
+			await this.llmService.sendMessageStream(content, conversationHistory, streamCallback, this.currentAbortController.signal);
 			
 		} catch (error) {
 			// Handle error
 			this.handleStreamingError(assistantMessage.id, error);
 			this.isStreaming = false;
 			this.setInputEnabled(true);
+			this.showStopButton(false);
+			this.currentAbortController = null;
 		}
 	}
 
@@ -205,6 +229,16 @@ export class ChatView extends ItemView {
 		
 		if (enabled) {
 			this.inputElement.focus();
+		}
+	}
+
+	private showStopButton(show: boolean) {
+		if (show) {
+			this.stopButton.style.display = 'block';
+			this.sendButton.style.display = 'none';
+		} else {
+			this.stopButton.style.display = 'none';
+			this.sendButton.style.display = 'block';
 		}
 	}
 
@@ -332,5 +366,15 @@ export class ChatView extends ItemView {
 
 		// Scroll to bottom
 		this.messageContainer.scrollTop = this.messageContainer.scrollHeight;
+	}
+
+	private stopStreaming() {
+		if (this.currentAbortController) {
+			this.currentAbortController.abort();
+		}
+		this.isStreaming = false;
+		this.setInputEnabled(true);
+		this.showStopButton(false);
+		this.currentAbortController = null;
 	}
 } 

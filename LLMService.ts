@@ -85,7 +85,7 @@ export class LLMService {
 		}
 	}
 
-	async sendMessageStream(message: string, conversationHistory: ChatMessage[] = [], callback: StreamCallback): Promise<void> {
+	async sendMessageStream(message: string, conversationHistory: ChatMessage[] = [], callback: StreamCallback, abortSignal?: AbortSignal): Promise<void> {
 		try {
 			const messages: ChatMessage[] = [
 				...conversationHistory,
@@ -103,9 +103,14 @@ export class LLMService {
 			console.log('Sending streaming request to:', this.config.apiEndpoint);
 			console.log('Request payload:', JSON.stringify(request, null, 2));
 
-			await this.makeStreamingAPIRequest(request, callback);
+			await this.makeStreamingAPIRequest(request, callback, abortSignal);
 		} catch (error) {
 			console.error('Error sending streaming message to LLM:', error);
+			
+			// Check if it's an abort error
+			if (error.name === 'AbortError') {
+				throw new Error('Request was cancelled by user');
+			}
 			
 			// Provide more specific error messages
 			if (error.message.includes('Failed to fetch')) {
@@ -165,7 +170,7 @@ export class LLMService {
 		}
 	}
 
-	private async makeStreamingAPIRequest(request: ChatRequest, callback: StreamCallback): Promise<void> {
+	private async makeStreamingAPIRequest(request: ChatRequest, callback: StreamCallback, abortSignal?: AbortSignal): Promise<void> {
 		const headers: Record<string, string> = {
 			'Content-Type': 'application/json',
 		};
@@ -181,7 +186,7 @@ export class LLMService {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(request),
-				signal: AbortSignal.timeout(60000), // 60 second timeout for streaming
+				signal: abortSignal || AbortSignal.timeout(60000), // 60 second timeout for streaming
 			});
 
 			console.log('Streaming response status:', response.status);

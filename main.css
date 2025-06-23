@@ -1,4 +1,18 @@
 /* styles.css */
+.local-llm-full-height {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+}
+.local-llm-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  flex: 1;
+}
 .local-llm-messages {
   flex: 1;
   overflow-y: auto;
@@ -6,7 +20,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100vh - 200px);
+  min-height: 0;
 }
 .local-llm-message {
   display: flex;
@@ -157,6 +171,7 @@
   padding: 10px;
   border-top: 1px solid var(--background-modifier-border);
   background-color: var(--background-primary);
+  flex-shrink: 0;
 }
 .local-llm-input {
   flex: 1;
@@ -196,6 +211,26 @@
   background-color: var(--interactive-accent-hover);
 }
 .local-llm-send-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.local-llm-stop-button {
+  padding: 8px 16px;
+  background-color: #dc3545 !important;
+  color: white !important;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+  align-self: flex-end;
+  display: none;
+  transition: background-color 0.2s ease;
+}
+.local-llm-stop-button:hover:not(:disabled) {
+  background-color: #c82333 !important;
+}
+.local-llm-stop-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
