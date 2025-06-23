@@ -141,7 +141,6 @@ export class ChatView extends ItemView {
 		console.log('Updating LLM service with settings:', this.plugin.settings);
 		this.llmService = createLLMService(this.plugin.settings.provider, {
 			apiEndpoint: this.plugin.settings.apiEndpoint,
-			modelName: this.plugin.settings.modelName,
 			apiKey: this.plugin.settings.apiKey,
 			maxTokens: this.plugin.settings.maxTokens,
 			temperature: this.plugin.settings.temperature
@@ -152,7 +151,6 @@ export class ChatView extends ItemView {
 	updateLLMService(config: any) {
 		this.llmService = createLLMService(config.provider || 'custom', {
 			apiEndpoint: config.apiEndpoint,
-			modelName: config.modelName,
 			apiKey: config.apiKey,
 			maxTokens: config.maxTokens,
 			temperature: config.temperature

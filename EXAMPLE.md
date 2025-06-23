@@ -4,6 +4,8 @@ This document shows how to set up and use the Local LLM Chat plugin with differe
 
 ## Quick Start with Ollama
 
+### Ollama Setup
+
 1. **Install Ollama**:
    ```bash
    # macOS/Linux
@@ -13,75 +15,66 @@ This document shows how to set up and use the Local LLM Chat plugin with differe
    # Download from https://ollama.ai/download
    ```
 
-2. **Start Ollama**:
-   ```bash
-   ollama serve
-   ```
-
-3. **Pull a Model**:
+2. **Pull a Model**:
    ```bash
    ollama pull llama2
    ```
 
-4. **Configure Plugin**:
-   - Open Obsidian Settings
-   - Go to Community Plugins > Local LLM Chat
-   - Set Provider to "Ollama"
-   - API Endpoint: `http://localhost:11434/api/chat`
-   - Model Name: `llama2`
+3. **Start Ollama**:
+   ```bash
+   ollama serve
+   ```
 
-5. **Start Chatting**:
-   - Click the chat icon in the ribbon
-   - Type your question and press Enter
+4. **Plugin Configuration**:
+   - Provider: `ollama`
+   - API Endpoint: `http://localhost:11434/api/chat`
 
 ## Using LM Studio
 
-1. **Download LM Studio**: Visit [lmstudio.ai](https://lmstudio.ai)
+### LM Studio Setup
+
+1. **Download and Install**:
+   - Download from https://lmstudio.ai/
+   - Install and launch LM Studio
 
 2. **Load a Model**:
-   - Open LM Studio
    - Download a model (e.g., Llama 2 7B)
    - Load the model
+   - Start the local server
 
-3. **Start Local Server**:
-   - Go to Local Server tab
-   - Click "Start Server"
-   - Note the endpoint URL
-
-4. **Configure Plugin**:
-   - Provider: "LM Studio"
+3. **Plugin Configuration**:
+   - Provider: `lmstudio`
    - API Endpoint: `http://localhost:1234/v1/chat/completions`
-   - Model Name: `local-model`
 
 ## Using vLLM
+
+### vLLM Setup
 
 1. **Install vLLM**:
    ```bash
    pip install vllm
    ```
 
-2. **Start Server**:
+2. **Start vLLM Server**:
    ```bash
-   python -m vllm.entrypoints.openai.api_server \
-     --model meta-llama/Llama-2-7b-chat-hf \
+   vllm serve meta-llama/Llama-2-7b-chat-hf \
      --host 0.0.0.0 \
      --port 8000
    ```
 
-3. **Configure Plugin**:
-   - Provider: "vLLM"
+3. **Plugin Configuration**:
+   - Provider: `vllm`
    - API Endpoint: `http://localhost:8000/v1/chat/completions`
-   - Model Name: `meta-llama/Llama-2-7b-chat-hf`
 
 ## Custom Provider
 
-For any other LLM that follows the OpenAI API format:
+### Custom Setup
 
-1. **Configure Plugin**:
-   - Provider: "Custom"
-   - API Endpoint: Your LLM's endpoint
-   - Model Name: Your model name
-   - API Key: If required
+1. **Configure your own LLM server** to use the OpenAI-compatible API format
+
+2. **Plugin Configuration**:
+   - Provider: `custom`
+   - API Endpoint: Your custom endpoint URL
 
 ## Example Conversations
 
@@ -129,11 +122,6 @@ Unsupervised Learning:
 - Check if your LLM server is running
 - Verify the API endpoint URL
 - Ensure the port is not blocked by firewall
-
-### "Model Not Found" Error
-- Verify the model name is correct
-- Check if the model is loaded in your LLM server
-- Try a different model name
 
 ### Slow Responses
 - Reduce the max tokens setting

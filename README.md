@@ -8,7 +8,7 @@ A plugin for Obsidian that provides a chat interface for interacting with local 
 - **Message History**: Persistent chat history with timestamps
 - **Real-time Responses**: Live interaction with your local LLM
 - **Keyboard Shortcuts**: Send messages with Enter key
-- **Settings Panel**: Configure your LLM endpoint and model preferences
+- **Settings Panel**: Configure your LLM endpoint and preferences
 - **Responsive Design**: Works well on different screen sizes
 
 ## Installation
@@ -60,11 +60,11 @@ The deployment scripts will:
 
 ## Configuration
 
-1. Open Obsidian Settings
-2. Go to Community Plugins > Local LLM Chat
-3. Configure the following settings:
-   - **API Endpoint**: URL of your local LLM API (e.g., `http://localhost:8000/v1/chat/completions`)
-   - **Model Name**: The model to use for chat completions
+1. **Provider**: Select your LLM provider (Ollama, LM Studio, vLLM, or Custom)
+2. **API Endpoint**: The URL where your LLM server is running
+3. **API Key** (Optional): If your provider requires authentication
+4. **Max Tokens**: Maximum response length
+5. **Temperature**: Controls response randomness (0 = deterministic, 1 = very random)
 
 ## Usage
 
