@@ -47,7 +47,22 @@ export class ChatView extends ItemView {
 		// Header with title and settings button
 		const header = container.createEl('div', { cls: 'local-llm-chat-header' });
 		header.createEl('h4', { text: 'Local LLM Chat' });
-		const settingsButton = header.createEl('button', {
+		
+		// Create button container for header buttons
+		const headerButtons = header.createEl('div', { cls: 'local-llm-header-buttons' });
+		
+		// Create new chat button
+		const newChatButton = headerButtons.createEl('button', {
+			cls: 'local-llm-new-chat-button',
+			text: 'Start New Chat',
+			attr: { 'aria-label': 'Start new chat', 'type': 'button' }
+		});
+		newChatButton.addEventListener('click', () => {
+			this.startNewChat();
+		});
+		
+		// Create settings button
+		const settingsButton = headerButtons.createEl('button', {
 			cls: 'local-llm-settings-button',
 			attr: { 'aria-label': 'Open plugin settings', 'type': 'button' }
 		});
@@ -376,5 +391,28 @@ export class ChatView extends ItemView {
 		this.setInputEnabled(true);
 		this.showStopButton(false);
 		this.currentAbortController = null;
+	}
+
+	private startNewChat() {
+		// Stop any ongoing streaming
+		if (this.isStreaming) {
+			this.stopStreaming();
+		}
+
+		// Clear all messages
+		this.messages = [];
+		this.messageContainer.empty();
+
+		// Add new welcome message
+		this.addMessage({
+			id: 'welcome',
+			role: 'assistant',
+			content: 'Hello! I\'m your local LLM assistant. How can I help you today?\n\nYou can ask me questions and I\'ll respond with **markdown formatting** support!',
+			timestamp: new Date()
+		});
+
+		// Clear input field
+		this.inputElement.value = '';
+		this.inputElement.focus();
 	}
 } 
