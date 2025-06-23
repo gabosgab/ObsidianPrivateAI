@@ -34,6 +34,18 @@ export interface ChatResponse {
 	};
 }
 
+export interface StreamChunk {
+	choices: Array<{
+		delta: {
+			content?: string;
+			role?: string;
+		};
+		finish_reason?: string;
+	}>;
+}
+
+export type StreamCallback = (chunk: string, isComplete: boolean) => void;
+
 export class LLMService {
 	private config: LLMConfig;
 
@@ -70,6 +82,37 @@ export class LLMService {
 			}
 			
 			throw new Error(`Failed to get response from LLM: ${error.message}`);
+		}
+	}
+
+	async sendMessageStream(message: string, conversationHistory: ChatMessage[] = [], callback: StreamCallback): Promise<void> {
+		try {
+			const messages: ChatMessage[] = [
+				...conversationHistory,
+				{ role: 'user', content: message }
+			];
+
+			const request: ChatRequest = {
+				messages,
+				model: this.config.modelName,
+				max_tokens: this.config.maxTokens || 1000,
+				temperature: this.config.temperature || 0.7,
+				stream: true
+			};
+
+			console.log('Sending streaming request to:', this.config.apiEndpoint);
+			console.log('Request payload:', JSON.stringify(request, null, 2));
+
+			await this.makeStreamingAPIRequest(request, callback);
+		} catch (error) {
+			console.error('Error sending streaming message to LLM:', error);
+			
+			// Provide more specific error messages
+			if (error.message.includes('Failed to fetch')) {
+				throw new Error(`Cannot connect to LLM server at ${this.config.apiEndpoint}. Please check:\n1. Is your LLM server running?\n2. Is the endpoint URL correct?\n3. Are there any firewall/network issues?`);
+			}
+			
+			throw new Error(`Failed to get streaming response from LLM: ${error.message}`);
 		}
 	}
 
@@ -119,6 +162,131 @@ export class LLMService {
 			}
 			
 			throw error;
+		}
+	}
+
+	private async makeStreamingAPIRequest(request: ChatRequest, callback: StreamCallback): Promise<void> {
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+		};
+
+		if (this.config.apiKey) {
+			headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+		}
+
+		console.log('Making streaming API request to:', this.config.apiEndpoint);
+
+		try {
+			const response = await fetch(this.config.apiEndpoint, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify(request),
+				signal: AbortSignal.timeout(60000), // 60 second timeout for streaming
+			});
+
+			console.log('Streaming response status:', response.status);
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error('Streaming API Error Response:', errorText);
+				throw new Error(`Streaming API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+			}
+
+			if (!response.body) {
+				throw new Error('No response body for streaming request');
+			}
+
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+			let isCompleted = false; // Flag to prevent multiple completion signals
+
+			try {
+				while (true) {
+					const { done, value } = await reader.read();
+					
+					if (done) {
+						// Process any remaining buffer
+						if (buffer.trim() && !isCompleted) {
+							this.processStreamChunk(buffer, callback);
+						}
+						if (!isCompleted) {
+							callback('', true); // Signal completion
+							isCompleted = true;
+						}
+						break;
+					}
+
+					// Decode the chunk and add to buffer
+					buffer += decoder.decode(value, { stream: true });
+
+					// Process complete lines
+					const lines = buffer.split('\n');
+					buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+					for (const line of lines) {
+						if (line.trim() && line.startsWith('data: ')) {
+							const data = line.slice(6); // Remove 'data: ' prefix
+							
+							if (data === '[DONE]') {
+								if (!isCompleted) {
+									callback('', true); // Signal completion
+									isCompleted = true;
+								}
+								return;
+							}
+
+							try {
+								const chunk: StreamChunk = JSON.parse(data);
+								this.processStreamChunk(chunk, callback, isCompleted);
+								// Check if completion was signaled by processStreamChunk
+								if (chunk.choices?.some(choice => choice.finish_reason)) {
+									isCompleted = true;
+								}
+							} catch (parseError) {
+								console.warn('Failed to parse streaming chunk:', data, parseError);
+							}
+						}
+					}
+				}
+			} finally {
+				reader.releaseLock();
+			}
+		} catch (error) {
+			console.error('Streaming fetch error details:', error);
+			
+			// Handle specific error types
+			if (error.name === 'AbortError') {
+				throw new Error('Streaming request timed out after 60 seconds');
+			}
+			
+			if (error.message.includes('Failed to fetch')) {
+				throw new Error(`Network error during streaming: ${error.message}`);
+			}
+			
+			throw error;
+		}
+	}
+
+	private processStreamChunk(chunk: StreamChunk | string, callback: StreamCallback, isCompleted: boolean = false): void {
+		if (typeof chunk === 'string') {
+			// Handle raw string chunks (fallback)
+			if (chunk.trim() && !isCompleted) {
+				callback(chunk, false);
+			}
+			return;
+		}
+
+		// Handle structured chunks
+		for (const choice of chunk.choices) {
+			if (choice.delta?.content && !isCompleted) {
+				callback(choice.delta.content, false);
+			}
+			
+			if (choice.finish_reason && !isCompleted) {
+				callback('', true); // Signal completion
+				return;
+			}
 		}
 	}
 
