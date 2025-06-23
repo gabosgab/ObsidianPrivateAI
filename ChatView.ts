@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownRenderer } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
 import LocalLLMPlugin from './main';
@@ -81,6 +81,19 @@ export class ChatView extends ItemView {
 		});
 		this.updateSearchToggleButton(searchToggleButton);
 		
+		// Create copy all button
+		const copyAllButton = headerButtons.createEl('button', {
+			cls: 'local-llm-copy-all-button',
+			attr: { 'aria-label': 'Copy entire conversation', 'type': 'button' }
+		});
+		copyAllButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<path d="M16 4H18C19.1046 4 20 4.89543 20 6V18C20 19.1046 19.1046 20 18 20H6C4.89543 20 4 19.1046 4 18V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+			<path d="M8 2H16C17.1046 2 18 2.89543 18 4V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V4C6 2.89543 6.89543 2 8 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+		</svg>`;
+		copyAllButton.addEventListener('click', () => {
+			this.copyEntireConversation();
+		});
+		
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
 			cls: 'local-llm-settings-button',
@@ -150,11 +163,91 @@ export class ChatView extends ItemView {
 			this.stopStreaming();
 		});
 
+		// Add keyboard shortcut for copying selected text
+		this.messageContainer.addEventListener('keydown', (e) => {
+			if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+				const selection = window.getSelection();
+				if (selection && selection.toString().length > 0) {
+					// Let the default copy behavior work
+					return;
+				}
+			}
+		});
+
+		// Add context menu for copying text
+		this.messageContainer.addEventListener('contextmenu', (e) => {
+			const target = e.target as HTMLElement;
+			const messageEl = target.closest('.local-llm-message-assistant');
+			
+			if (messageEl) {
+				const messageId = messageEl.getAttribute('data-message-id');
+				const message = this.messages.find(m => m.id === messageId);
+				
+				if (message && message.role === 'assistant') {
+					e.preventDefault();
+					
+					// Create context menu
+					const contextMenu = document.createElement('div');
+					contextMenu.className = 'local-llm-context-menu';
+					contextMenu.innerHTML = `
+						<div class="local-llm-context-menu-item" data-action="copy">Copy Message</div>
+						<div class="local-llm-context-menu-item" data-action="copy-selected">Copy Selected Text</div>
+					`;
+					
+					// Position menu
+					contextMenu.style.position = 'fixed';
+					contextMenu.style.left = e.pageX + 'px';
+					contextMenu.style.top = e.pageY + 'px';
+					contextMenu.style.zIndex = '1000';
+					
+					document.body.appendChild(contextMenu);
+					
+					// Handle menu item clicks
+					contextMenu.addEventListener('click', (menuEvent) => {
+						const action = (menuEvent.target as HTMLElement).getAttribute('data-action');
+						
+						if (action === 'copy') {
+							navigator.clipboard.writeText(message.content);
+							new Notice('✅ Message copied to clipboard!', 2000);
+						} else if (action === 'copy-selected') {
+							const selection = window.getSelection();
+							if (selection && selection.toString().length > 0) {
+								navigator.clipboard.writeText(selection.toString());
+								new Notice('✅ Selected text copied to clipboard!', 2000);
+							}
+						}
+						
+						document.body.removeChild(contextMenu);
+					});
+					
+					// Close menu when clicking outside
+					const closeMenu = () => {
+						if (document.body.contains(contextMenu)) {
+							document.body.removeChild(contextMenu);
+						}
+						document.removeEventListener('click', closeMenu);
+					};
+					
+					setTimeout(() => {
+						document.addEventListener('click', closeMenu);
+					}, 0);
+				}
+			}
+		});
+
 		// Add initial welcome message
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: 'Hello! I\'m your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.\n\n**Features:**\n- 🤖 Local LLM responses with markdown support\n- 🔍 Automatic vault search for relevant context\n- 📚 Click on used notes to open them\n- ⚙️ Toggle search on/off with the search button\n\nHow can I help you today?',
+			content: `Hello! I'm your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.
+
+**Features:**
+- 🤖 Local LLM responses with markdown support
+- 🔍 Automatic vault search for relevant context
+- 📚 Click on used notes to open them
+- ⚙️ Toggle search on/off with the search button
+
+How can I help you today?`,
 			timestamp: new Date()
 		});
 	}
@@ -382,6 +475,12 @@ export class ChatView extends ItemView {
 					cls: 'streaming-cursor',
 					text: '▋'
 				});
+				
+				// Ensure text is selectable
+				contentEl.style.userSelect = 'text';
+				(contentEl.style as any).webkitUserSelect = 'text';
+				(contentEl.style as any).mozUserSelect = 'text';
+				(contentEl.style as any).msUserSelect = 'text';
 			}
 		}
 	}
@@ -457,6 +556,43 @@ export class ChatView extends ItemView {
 				'',
 				this.plugin
 			);
+			
+			// Add copy button for assistant messages
+			const copyButton = messageEl.createEl('button', {
+				cls: 'local-llm-copy-button',
+				attr: { 'aria-label': 'Copy message content', 'type': 'button' }
+			});
+			copyButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M16 4H18C19.1046 4 20 4.89543 20 6V18C20 19.1046 19.1046 20 18 20H6C4.89543 20 4 19.1046 4 18V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M8 2H16C17.1046 2 18 2.89543 18 4V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V4C6 2.89543 6.89543 2 8 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>`;
+			
+			copyButton.addEventListener('click', async () => {
+				try {
+					await navigator.clipboard.writeText(message.content);
+					
+					// Show success feedback
+					const originalText = copyButton.innerHTML;
+					copyButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>`;
+					copyButton.classList.add('copied');
+					
+					setTimeout(() => {
+						copyButton.innerHTML = originalText;
+						copyButton.classList.remove('copied');
+					}, 2000);
+				} catch (error) {
+					console.error('Failed to copy text:', error);
+					// Fallback for older browsers
+					const textArea = document.createElement('textarea');
+					textArea.value = message.content;
+					document.body.appendChild(textArea);
+					textArea.select();
+					document.execCommand('copy');
+					document.body.removeChild(textArea);
+				}
+			});
 		} else {
 			// Plain text for user messages or streaming messages
 			contentEl.setText(message.content);
@@ -555,7 +691,15 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: 'Hello! I\'m your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.\n\n**Features:**\n- 🤖 Local LLM responses with markdown support\n- 🔍 Automatic vault search for relevant context\n- 📚 Click on used notes to open them\n- ⚙️ Toggle search on/off with the search button\n\nHow can I help you today?',
+			content: `Hello! I'm your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.
+
+**Features:**
+- 🤖 Local LLM responses with markdown support
+- 🔍 Automatic vault search for relevant context
+- 📚 Click on used notes to open them
+- ⚙️ Toggle search on/off with the search button
+
+How can I help you today?`,
 			timestamp: new Date()
 		});
 
@@ -571,6 +715,40 @@ export class ChatView extends ItemView {
 		} else {
 			button.classList.remove('active');
 			button.setAttribute('title', 'Search disabled - Click to enable');
+		}
+	}
+
+	private copyEntireConversation() {
+		try {
+			// Filter out welcome message and format conversation
+			const conversationMessages = this.messages
+				.filter(m => m.id !== 'welcome')
+				.map(m => {
+					const timestamp = m.timestamp.toLocaleString();
+					const role = m.role === 'user' ? 'You' : 'Assistant';
+					return `[${timestamp}] ${role}:\n${m.content}\n`;
+				});
+			
+			const conversationText = conversationMessages.join('\n---\n\n');
+			
+			// Copy to clipboard
+			navigator.clipboard.writeText(conversationText).then(() => {
+				// Show success feedback
+				const notice = new Notice('✅ Conversation copied to clipboard!', 2000);
+			}).catch((error) => {
+				console.error('Failed to copy conversation:', error);
+				// Fallback for older browsers
+				const textArea = document.createElement('textarea');
+				textArea.value = conversationText;
+				document.body.appendChild(textArea);
+				textArea.select();
+				document.execCommand('copy');
+				document.body.removeChild(textArea);
+				new Notice('✅ Conversation copied to clipboard!', 2000);
+			});
+		} catch (error) {
+			console.error('Error copying conversation:', error);
+			new Notice('❌ Failed to copy conversation', 2000);
 		}
 	}
 } 

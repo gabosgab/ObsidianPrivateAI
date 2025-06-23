@@ -49,6 +49,7 @@
 	border-radius: 8px;
 	max-width: 85%;
 	word-wrap: break-word;
+	position: relative;
 }
 
 .local-llm-message-user {
@@ -61,11 +62,36 @@
 	align-self: flex-start;
 	background-color: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
+	position: relative;
 }
 
 .local-llm-message-content {
 	margin-bottom: 5px;
-	line-height: 1.4;
+	line-height: 1.5;
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+.local-llm-message-content p {
+	margin: 0.5em 0;
+}
+
+.local-llm-message-content code {
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+}
+
+.local-llm-message-content pre {
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
 }
 
 /* Markdown styling for assistant messages */
@@ -489,4 +515,92 @@
 	color: var(--text-muted);
 	font-size: 11px;
 	font-style: italic;
+}
+
+/* Copy button */
+.local-llm-copy-button {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 4px;
+	cursor: pointer;
+	opacity: 0;
+	transition: all 0.2s ease;
+	color: var(--text-muted);
+	z-index: 10;
+}
+
+.local-llm-message:hover .local-llm-copy-button {
+	opacity: 1;
+}
+
+.local-llm-copy-button:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border-hover);
+	color: var(--text-normal);
+}
+
+.local-llm-copy-button.copied {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+/* Improve text selection in markdown content */
+.local-llm-message-content h1,
+.local-llm-message-content h2,
+.local-llm-message-content h3,
+.local-llm-message-content h4,
+.local-llm-message-content h5,
+.local-llm-message-content h6,
+.local-llm-message-content p,
+.local-llm-message-content li,
+.local-llm-message-content blockquote {
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+	cursor: text;
+}
+
+/* Copy all button */
+.local-llm-copy-all-button {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 6px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	color: var(--text-muted);
+}
+
+.local-llm-copy-all-button:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border-hover);
+	color: var(--text-normal);
+}
+
+/* Context menu */
+.local-llm-context-menu {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	padding: 4px 0;
+	min-width: 150px;
+}
+
+.local-llm-context-menu-item {
+	padding: 8px 12px;
+	cursor: pointer;
+	color: var(--text-normal);
+	font-size: 14px;
+	transition: background-color 0.2s ease;
+}
+
+.local-llm-context-menu-item:hover {
+	background: var(--background-modifier-hover);
 } 
