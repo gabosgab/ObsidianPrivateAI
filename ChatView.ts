@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
 import LocalLLMPlugin from './main';
@@ -71,45 +71,29 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-context-mode-container'
 		});
 		
-		const contextModeLabel = contextModeContainer.createEl('label', {
+		contextModeContainer.createEl('label', {
 			cls: 'local-llm-context-mode-label',
 			text: 'Context:'
 		});
 		
-		const contextModeSelect = contextModeContainer.createEl('select', {
-			cls: 'local-llm-context-mode-select'
-		});
-		
-		const noneOption = contextModeSelect.createEl('option', {
-			text: 'None',
-			value: 'none'
-		});
-		
-		const searchOption = contextModeSelect.createEl('option', {
-			text: 'Search',
-			value: 'search'
-		});
-		
-		const currentNoteOption = contextModeSelect.createEl('option', {
-			text: 'Open Tabs',
-			value: 'current-note'
-		});
+		const dropdown = new DropdownComponent(contextModeContainer)
+			.addOption('none', 'None')
+			.addOption('search', 'Search')
+			.addOption('current-note', 'Open Tabs')
+			.onChange(async (value) => {
+				this.plugin.settings.enableSearch = value !== 'none';
+				this.plugin.settings.useCurrentNote = value === 'current-note';
+				await this.plugin.saveSettings();
+			});
 		
 		// Set initial value based on settings
 		if (!this.plugin.settings.enableSearch) {
-			contextModeSelect.value = 'none';
+			dropdown.setValue('none');
 		} else if (this.plugin.settings.useCurrentNote) {
-			contextModeSelect.value = 'current-note';
+			dropdown.setValue('current-note');
 		} else {
-			contextModeSelect.value = 'search';
+			dropdown.setValue('search');
 		}
-		
-		contextModeSelect.addEventListener('change', () => {
-			const value = contextModeSelect.value;
-			this.plugin.settings.enableSearch = value !== 'none';
-			this.plugin.settings.useCurrentNote = value === 'current-note';
-			this.plugin.saveSettings();
-		});
 		
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
@@ -330,9 +314,15 @@ How can I help you today?`,
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		// Get the current dropdown value
-		const contextModeSelect = this.containerEl.querySelector('.local-llm-context-mode-select') as HTMLSelectElement;
-		const contextMode = contextModeSelect ? contextModeSelect.value : 'none';
+		// Get the current dropdown value from settings
+		let contextMode: 'none' | 'search' | 'current-note';
+		if (!this.plugin.settings.enableSearch) {
+			contextMode = 'none';
+		} else if (this.plugin.settings.useCurrentNote) {
+			contextMode = 'current-note';
+		} else {
+			contextMode = 'search';
+		}
 		
 		if (contextMode !== 'none') {
 			this.showSearchIndicator(true);
