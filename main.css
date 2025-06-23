@@ -340,3 +340,95 @@
 .local-llm-settings-button svg {
   display: block;
 }
+.local-llm-search-indicator {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: pulse 2s infinite;
+}
+.local-llm-search-indicator::before {
+  content: "\1f50d";
+  font-size: 14px;
+}
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.local-llm-search-toggle-button {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-muted);
+}
+.local-llm-search-toggle-button:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover);
+}
+.local-llm-search-toggle-button.active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.local-llm-search-toggle-button.active:hover {
+  background: var(--interactive-accent-hover);
+  border-color: var(--interactive-accent-hover);
+}
+.local-llm-used-notes {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  border-left: 3px solid var(--interactive-accent);
+  font-size: 12px;
+}
+.local-llm-used-notes-header {
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 4px;
+}
+.local-llm-used-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.local-llm-used-note-item {
+  padding: 4px 6px;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.local-llm-used-note-item:hover {
+  background: var(--background-modifier-hover);
+}
+.local-llm-used-note-title {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+.local-llm-used-note-path {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.local-llm-used-note-relevance {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+}

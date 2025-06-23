@@ -10,6 +10,11 @@ interface LocalLLMSettings {
 	apiKey: string;
 	maxTokens: number;
 	temperature: number;
+	// Search settings
+	enableSearch: boolean;
+	searchMaxResults: number;
+	searchMaxTokens: number;
+	searchThreshold: number;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -17,7 +22,12 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	provider: 'ollama',
 	apiKey: '',
 	maxTokens: 1000,
-	temperature: 0.7
+	temperature: 0.7,
+	// Search defaults
+	enableSearch: true,
+	searchMaxResults: 5,
+	searchMaxTokens: 2000,
+	searchThreshold: 0.3
 };
 
 export default class LocalLLMPlugin extends Plugin {
@@ -164,6 +174,55 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setDynamicTooltip()
 				.onChange(async (value) => {
 					this.plugin.settings.temperature = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Search settings section
+		containerEl.createEl('h3', { text: 'Obsidian Search Settings' });
+
+		new Setting(containerEl)
+			.setName('Enable Obsidian Search')
+			.setDesc('Search your Obsidian vault for relevant information to include in responses')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableSearch)
+				.onChange(async (value) => {
+					this.plugin.settings.enableSearch = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Max Search Results')
+			.setDesc('Maximum number of notes to include as context')
+			.addSlider(slider => slider
+				.setLimits(1, 10, 1)
+				.setValue(this.plugin.settings.searchMaxResults)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.searchMaxResults = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Max Context Tokens')
+			.setDesc('Maximum tokens to include from search results')
+			.addSlider(slider => slider
+				.setLimits(500, 4000, 100)
+				.setValue(this.plugin.settings.searchMaxTokens)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.searchMaxTokens = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Search Relevance Threshold')
+			.setDesc('Minimum relevance score for notes to be included (0 = include all, 1 = very strict)')
+			.addSlider(slider => slider
+				.setLimits(0, 1, 0.1)
+				.setValue(this.plugin.settings.searchThreshold)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.searchThreshold = value;
 					await this.plugin.saveSettings();
 				}));
 
