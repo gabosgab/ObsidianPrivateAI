@@ -294,6 +294,28 @@
   font-size: 1.1em;
   font-weight: 600;
 }
+.local-llm-header-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.local-llm-new-chat-button {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  padding: 4px 8px;
+  margin-right: 8px;
+  cursor: pointer;
+  color: var(--text-normal);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  font-size: 0.8em;
+  border-radius: 4px;
+}
+.local-llm-new-chat-button:hover {
+  background-color: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
 .local-llm-settings-button {
   background: none;
   border: none;
