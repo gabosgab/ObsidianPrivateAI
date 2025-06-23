@@ -66,32 +66,49 @@ export class ChatView extends ItemView {
 			this.startNewChat();
 		});
 		
-		// Create search toggle button
-		const searchToggleButton = headerButtons.createEl('button', {
-			cls: 'local-llm-search-toggle-button',
-			attr: { 'aria-label': 'Toggle Obsidian search', 'type': 'button' }
+		// Create context mode dropdown
+		const contextModeContainer = headerButtons.createEl('div', {
+			cls: 'local-llm-context-mode-container'
 		});
-		searchToggleButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M21 21L16.514 16.506L21 21ZM19 10.5C19 15.194 15.194 19 10.5 19C5.806 19 2 15.194 2 10.5C2 5.806 5.806 2 10.5 2C15.194 2 19 5.806 19 10.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-		</svg>`;
-		searchToggleButton.addEventListener('click', () => {
-			this.plugin.settings.enableSearch = !this.plugin.settings.enableSearch;
-			this.plugin.saveSettings();
-			this.updateSearchToggleButton(searchToggleButton);
-		});
-		this.updateSearchToggleButton(searchToggleButton);
 		
-		// Create copy all button
-		const copyAllButton = headerButtons.createEl('button', {
-			cls: 'local-llm-copy-all-button',
-			attr: { 'aria-label': 'Copy entire conversation', 'type': 'button' }
+		const contextModeLabel = contextModeContainer.createEl('label', {
+			cls: 'local-llm-context-mode-label',
+			text: 'Context:'
 		});
-		copyAllButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M16 4H18C19.1046 4 20 4.89543 20 6V18C20 19.1046 19.1046 20 18 20H6C4.89543 20 4 19.1046 4 18V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-			<path d="M8 2H16C17.1046 2 18 2.89543 18 4V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V4C6 2.89543 6.89543 2 8 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-		</svg>`;
-		copyAllButton.addEventListener('click', () => {
-			this.copyEntireConversation();
+		
+		const contextModeSelect = contextModeContainer.createEl('select', {
+			cls: 'local-llm-context-mode-select'
+		});
+		
+		const noneOption = contextModeSelect.createEl('option', {
+			text: 'None',
+			value: 'none'
+		});
+		
+		const searchOption = contextModeSelect.createEl('option', {
+			text: 'Search',
+			value: 'search'
+		});
+		
+		const currentNoteOption = contextModeSelect.createEl('option', {
+			text: 'Open Tabs',
+			value: 'current-note'
+		});
+		
+		// Set initial value based on settings
+		if (!this.plugin.settings.enableSearch) {
+			contextModeSelect.value = 'none';
+		} else if (this.plugin.settings.useCurrentNote) {
+			contextModeSelect.value = 'current-note';
+		} else {
+			contextModeSelect.value = 'search';
+		}
+		
+		contextModeSelect.addEventListener('change', () => {
+			const value = contextModeSelect.value;
+			this.plugin.settings.enableSearch = value !== 'none';
+			this.plugin.settings.useCurrentNote = value === 'current-note';
+			this.plugin.saveSettings();
 		});
 		
 		// Create settings button
@@ -243,9 +260,9 @@ export class ChatView extends ItemView {
 
 **Features:**
 - 🤖 Local LLM responses with markdown support
-- 🔍 Automatic vault search for relevant context
+- 🔍 Context options: None, Search, or Open Tabs
 - 📚 Click on used notes to open them
-- ⚙️ Toggle search on/off with the search button
+- ⚙️ Configure settings with the settings button
 
 How can I help you today?`,
 			timestamp: new Date()
@@ -309,24 +326,42 @@ How can I help you today?`,
 		this.showStopButton(true);
 		this.isStreaming = true;
 
-		// Search for relevant Obsidian notes if enabled
+		// Get context based on dropdown selection
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
-		if (this.plugin.settings.enableSearch) {
+		
+		// Get the current dropdown value
+		const contextModeSelect = this.containerEl.querySelector('.local-llm-context-mode-select') as HTMLSelectElement;
+		const contextMode = contextModeSelect ? contextModeSelect.value : 'none';
+		
+		if (contextMode !== 'none') {
 			this.showSearchIndicator(true);
 			try {
-				searchResults = await this.searchService.searchVault(content, {
-					maxResults: this.plugin.settings.searchMaxResults,
-					maxTokens: this.plugin.settings.searchMaxTokens,
-					threshold: this.plugin.settings.searchThreshold
-				});
-				
-				if (searchResults.length > 0) {
-					searchContext = this.searchService.formatSearchResults(searchResults);
-					console.log(`Found ${searchResults.length} relevant notes for context`);
+				if (contextMode === 'current-note') {
+					// Use open tabs as context
+					const openTabs = await this.searchService.getCurrentNoteContext();
+					if (openTabs.length > 0) {
+						searchResults = openTabs;
+						searchContext = this.searchService.formatSearchResults(searchResults);
+						console.log(`Using ${openTabs.length} open tabs as context`);
+					} else {
+						console.log('No open tabs found, no context will be used');
+					}
+				} else if (contextMode === 'search') {
+					// Search entire vault
+					searchResults = await this.searchService.searchVault(content, {
+						maxResults: this.plugin.settings.searchMaxResults,
+						maxTokens: this.plugin.settings.searchMaxTokens,
+						threshold: this.plugin.settings.searchThreshold
+					});
+					
+					if (searchResults.length > 0) {
+						searchContext = this.searchService.formatSearchResults(searchResults);
+						console.log(`Found ${searchResults.length} relevant notes for context`);
+					}
 				}
 			} catch (searchError) {
-				console.warn('Error searching vault:', searchError);
+				console.warn('Error getting context:', searchError);
 				// Continue without search context if search fails
 			} finally {
 				this.showSearchIndicator(false);
@@ -695,9 +730,9 @@ How can I help you today?`,
 
 **Features:**
 - 🤖 Local LLM responses with markdown support
-- 🔍 Automatic vault search for relevant context
+- 🔍 Context options: None, Search, or Open Tabs
 - 📚 Click on used notes to open them
-- ⚙️ Toggle search on/off with the search button
+- ⚙️ Configure settings with the settings button
 
 How can I help you today?`,
 			timestamp: new Date()
@@ -706,16 +741,6 @@ How can I help you today?`,
 		// Clear input field
 		this.inputElement.value = '';
 		this.inputElement.focus();
-	}
-
-	private updateSearchToggleButton(button: HTMLElement) {
-		if (this.plugin.settings.enableSearch) {
-			button.classList.add('active');
-			button.setAttribute('title', 'Search enabled - Click to disable');
-		} else {
-			button.classList.remove('active');
-			button.setAttribute('title', 'Search disabled - Click to enable');
-		}
 	}
 
 	private copyEntireConversation() {
