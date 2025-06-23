@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage } from './LLMService';
+import LocalLLMPlugin from './main';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -17,14 +18,13 @@ export class ChatView extends ItemView {
 	private inputElement: HTMLTextAreaElement;
 	private sendButton: HTMLButtonElement;
 	private llmService: LLMService;
+	private plugin: LocalLLMPlugin;
 
-	constructor(leaf: WorkspaceLeaf) {
+	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
-		// Initialize with default Ollama configuration
-		this.llmService = createLLMService('ollama', {
-			apiEndpoint: 'http://localhost:11434/api/chat',
-			modelName: 'llama2'
-		});
+		this.plugin = plugin;
+		// Initialize with plugin settings
+		this.updateLLMServiceFromSettings();
 	}
 
 	getViewType(): string {
@@ -87,7 +87,19 @@ export class ChatView extends ItemView {
 		// Cleanup if needed
 	}
 
-	// Method to update LLM service configuration
+	// Method to update LLM service from plugin settings
+	updateLLMServiceFromSettings() {
+		console.log('Updating LLM service with settings:', this.plugin.settings);
+		this.llmService = createLLMService(this.plugin.settings.provider, {
+			apiEndpoint: this.plugin.settings.apiEndpoint,
+			modelName: this.plugin.settings.modelName,
+			apiKey: this.plugin.settings.apiKey,
+			maxTokens: this.plugin.settings.maxTokens,
+			temperature: this.plugin.settings.temperature
+		});
+	}
+
+	// Method to update LLM service configuration (for external use)
 	updateLLMService(config: any) {
 		this.llmService = createLLMService(config.provider || 'custom', {
 			apiEndpoint: config.apiEndpoint,
@@ -101,6 +113,9 @@ export class ChatView extends ItemView {
 	private async sendMessage() {
 		const content = this.inputElement.value.trim();
 		if (!content) return;
+
+		// Update LLM service with current settings before sending
+		this.updateLLMServiceFromSettings();
 
 		// Add user message
 		const userMessage: ChatMessage = {
