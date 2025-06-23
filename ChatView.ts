@@ -230,11 +230,27 @@ export class ChatView extends ItemView {
 			
 		} catch (error) {
 			// Handle error
-			this.handleStreamingError(assistantMessage.id, error);
-			this.isStreaming = false;
-			this.setInputEnabled(true);
-			this.showStopButton(false);
-			this.currentAbortController = null;
+			if (error.name === 'AbortError') {
+				// User cancelled - don't change the message content
+				this.isStreaming = false;
+				this.setInputEnabled(true);
+				this.showStopButton(false);
+				this.currentAbortController = null;
+				
+				// Finalize the current streaming message as-is
+				const streamingMessage = this.messages.find(m => m.isStreaming);
+				if (streamingMessage) {
+					streamingMessage.isStreaming = false;
+					this.finalizeStreamingMessage(streamingMessage.id);
+				}
+			} else {
+				// Handle actual errors
+				this.handleStreamingError(assistantMessage.id, error);
+				this.isStreaming = false;
+				this.setInputEnabled(true);
+				this.showStopButton(false);
+				this.currentAbortController = null;
+			}
 		}
 	}
 
@@ -391,6 +407,14 @@ export class ChatView extends ItemView {
 		this.setInputEnabled(true);
 		this.showStopButton(false);
 		this.currentAbortController = null;
+		
+		// Finalize the current streaming message as-is
+		const streamingMessage = this.messages.find(m => m.isStreaming);
+		if (streamingMessage) {
+			streamingMessage.isStreaming = false;
+			// Re-render the message to remove the streaming cursor and apply markdown
+			this.finalizeStreamingMessage(streamingMessage.id);
+		}
 	}
 
 	private startNewChat() {

@@ -107,9 +107,10 @@ export class LLMService {
 		} catch (error) {
 			console.error('Error sending streaming message to LLM:', error);
 			
-			// Check if it's an abort error
+			// Check if it's an abort error - don't throw for user cancellation
 			if (error.name === 'AbortError') {
-				throw new Error('Request was cancelled by user');
+				console.log('Request was cancelled by user');
+				return; // Exit gracefully without throwing an error
 			}
 			
 			// Provide more specific error messages
@@ -262,7 +263,8 @@ export class LLMService {
 			
 			// Handle specific error types
 			if (error.name === 'AbortError') {
-				throw new Error('Streaming request timed out after 60 seconds');
+				// Re-throw as AbortError so the caller can detect user cancellation
+				throw error;
 			}
 			
 			if (error.message.includes('Failed to fetch')) {
