@@ -15,6 +15,7 @@ interface LocalLLMSettings {
 	searchMaxResults: number;
 	searchMaxTokens: number;
 	searchThreshold: number;
+	useCurrentNote: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -27,7 +28,8 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	enableSearch: true,
 	searchMaxResults: 5,
 	searchMaxTokens: 2000,
-	searchThreshold: 0.3
+	searchThreshold: 0.3,
+	useCurrentNote: false
 };
 
 export default class LocalLLMPlugin extends Plugin {
@@ -187,6 +189,16 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableSearch)
 				.onChange(async (value) => {
 					this.plugin.settings.enableSearch = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Use Current Note as Context')
+			.setDesc('When enabled, uses the currently focused note as context instead of searching the entire vault')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useCurrentNote)
+				.onChange(async (value) => {
+					this.plugin.settings.useCurrentNote = value;
 					await this.plugin.saveSettings();
 				}));
 

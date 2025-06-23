@@ -439,33 +439,6 @@
 	100% { opacity: 1; }
 }
 
-/* Search toggle button */
-.local-llm-search-toggle-button {
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	padding: 6px;
-	cursor: pointer;
-	transition: all 0.2s ease;
-	color: var(--text-muted);
-}
-
-.local-llm-search-toggle-button:hover {
-	background: var(--background-modifier-hover);
-	border-color: var(--background-modifier-border-hover);
-}
-
-.local-llm-search-toggle-button.active {
-	background: var(--interactive-accent);
-	border-color: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-
-.local-llm-search-toggle-button.active:hover {
-	background: var(--interactive-accent-hover);
-	border-color: var(--interactive-accent-hover);
-}
-
 /* Used notes display */
 .local-llm-used-notes {
 	margin-top: 8px;
@@ -566,23 +539,6 @@
 	cursor: text;
 }
 
-/* Copy all button */
-.local-llm-copy-all-button {
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	padding: 6px;
-	cursor: pointer;
-	transition: all 0.2s ease;
-	color: var(--text-muted);
-}
-
-.local-llm-copy-all-button:hover {
-	background: var(--background-modifier-hover);
-	border-color: var(--background-modifier-border-hover);
-	color: var(--text-normal);
-}
-
 /* Context menu */
 .local-llm-context-menu {
 	background: var(--background-primary);
@@ -603,4 +559,40 @@
 
 .local-llm-context-menu-item:hover {
 	background: var(--background-modifier-hover);
+}
+
+/* Context mode dropdown */
+.local-llm-context-mode-container {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.local-llm-context-mode-label {
+	font-size: 12px;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.local-llm-context-mode-select {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 12px;
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	min-width: 100px;
+}
+
+.local-llm-context-mode-select:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border-hover);
+}
+
+.local-llm-context-mode-select:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--interactive-accent-hover);
 } 

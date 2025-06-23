@@ -252,4 +252,64 @@ export class SearchService {
 
 		return context;
 	}
+
+	/**
+	 * Get all open markdown notes as context
+	 */
+	async getCurrentNoteContext(): Promise<SearchResult[]> {
+		try {
+			// Get all open leaves
+			const leaves = this.app.workspace.getLeavesOfType('markdown');
+			const openMarkdownFiles: TFile[] = [];
+
+			// Collect all open markdown files
+			for (const leaf of leaves) {
+				const file = (leaf.view as any).file;
+				if (file && file.extension === 'md') {
+					openMarkdownFiles.push(file);
+				}
+			}
+
+			// Also check the active leaf in case it's not in the markdown leaves
+			const activeLeaf = this.app.workspace.activeLeaf;
+			if (activeLeaf && activeLeaf.view.getViewType().includes('markdown')) {
+				const activeFile = (activeLeaf.view as any).file;
+				if (activeFile && activeFile.extension === 'md' && !openMarkdownFiles.some(f => f.path === activeFile.path)) {
+					openMarkdownFiles.push(activeFile);
+				}
+			}
+
+			if (openMarkdownFiles.length === 0) {
+				console.log('No open markdown files found');
+				return [];
+			}
+
+			console.log(`Found ${openMarkdownFiles.length} open markdown files:`, openMarkdownFiles.map(f => f.path));
+
+			// Create search results for all open files
+			const results: SearchResult[] = [];
+			for (const file of openMarkdownFiles) {
+				try {
+					const content = await this.app.vault.read(file);
+					const metadata = this.app.metadataCache.getFileCache(file);
+					
+					results.push({
+						file,
+						content: content,
+						relevance: 1.0, // Full relevance since they're open
+						title: this.getFileTitle(file, metadata),
+						path: file.path
+					});
+				} catch (error) {
+					console.warn(`Error reading file ${file.path}:`, error);
+				}
+			}
+
+			return results;
+
+		} catch (error) {
+			console.warn('Error getting current note context:', error);
+			return [];
+		}
+	}
 } 
