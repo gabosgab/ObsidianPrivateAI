@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownRenderer } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage } from './LLMService';
 import LocalLLMPlugin from './main';
 
@@ -78,7 +78,7 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: 'Hello! I\'m your local LLM assistant. How can I help you today?',
+			content: 'Hello! I\'m your local LLM assistant. How can I help you today?\n\nYou can ask me questions and I\'ll respond with **markdown formatting** support!',
 			timestamp: new Date()
 		});
 	}
@@ -190,7 +190,7 @@ export class ChatView extends ItemView {
 		this.messages = this.messages.filter(m => m.id !== messageId);
 	}
 
-	private renderMessage(message: ChatMessage) {
+	private async renderMessage(message: ChatMessage) {
 		const messageEl = this.messageContainer.createEl('div', {
 			cls: `local-llm-message local-llm-message-${message.role}`,
 			attr: { 'data-message-id': message.id }
@@ -200,7 +200,19 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-message-content'
 		});
 
-		contentEl.setText(message.content);
+		// Render markdown for assistant messages, plain text for user messages
+		if (message.role === 'assistant') {
+			// Use Obsidian's markdown renderer for assistant messages
+			await MarkdownRenderer.renderMarkdown(
+				message.content,
+				contentEl,
+				'',
+				this.plugin
+			);
+		} else {
+			// Plain text for user messages
+			contentEl.setText(message.content);
+		}
 
 		const timestampEl = messageEl.createEl('div', {
 			cls: 'local-llm-message-timestamp'
