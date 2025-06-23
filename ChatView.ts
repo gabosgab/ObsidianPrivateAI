@@ -160,13 +160,14 @@ export class ChatView extends ItemView {
 	}
 
 	private async sendMessage() {
-		if (this.isStreaming) {
-			console.log('Already streaming, ignoring new message');
-			return;
-		}
-
 		const content = this.inputElement.value.trim();
 		if (!content) return;
+
+		// If already streaming, queue this message or handle it differently
+		if (this.isStreaming) {
+			console.log('Already streaming, but allowing new message to be sent');
+			// We'll allow sending multiple messages, but we need to handle this properly
+		}
 
 		// Update LLM service with current settings before sending
 		this.updateLLMServiceFromSettings();
@@ -185,8 +186,8 @@ export class ChatView extends ItemView {
 		// Create abort controller for this request
 		this.currentAbortController = new AbortController();
 
-		// Disable input while streaming and show stop button
-		this.setInputEnabled(false);
+		// Keep input enabled but disable send button while streaming
+		this.setSendButtonEnabled(false);
 		this.showStopButton(true);
 		this.isStreaming = true;
 
@@ -216,7 +217,7 @@ export class ChatView extends ItemView {
 					// Finalize the message
 					await this.finalizeStreamingMessage(assistantMessage.id);
 					this.isStreaming = false;
-					this.setInputEnabled(true);
+					this.setSendButtonEnabled(true);
 					this.showStopButton(false);
 					this.currentAbortController = null;
 				} else {
@@ -233,7 +234,7 @@ export class ChatView extends ItemView {
 			if (error.name === 'AbortError') {
 				// User cancelled - don't change the message content
 				this.isStreaming = false;
-				this.setInputEnabled(true);
+				this.setSendButtonEnabled(true);
 				this.showStopButton(false);
 				this.currentAbortController = null;
 				
@@ -247,7 +248,7 @@ export class ChatView extends ItemView {
 				// Handle actual errors
 				this.handleStreamingError(assistantMessage.id, error);
 				this.isStreaming = false;
-				this.setInputEnabled(true);
+				this.setSendButtonEnabled(true);
 				this.showStopButton(false);
 				this.currentAbortController = null;
 			}
@@ -256,6 +257,14 @@ export class ChatView extends ItemView {
 
 	private setInputEnabled(enabled: boolean) {
 		this.inputElement.disabled = !enabled;
+		this.sendButton.disabled = !enabled;
+		
+		if (enabled) {
+			this.inputElement.focus();
+		}
+	}
+
+	private setSendButtonEnabled(enabled: boolean) {
 		this.sendButton.disabled = !enabled;
 		
 		if (enabled) {
@@ -404,7 +413,7 @@ export class ChatView extends ItemView {
 			this.currentAbortController.abort();
 		}
 		this.isStreaming = false;
-		this.setInputEnabled(true);
+		this.setSendButtonEnabled(true);
 		this.showStopButton(false);
 		this.currentAbortController = null;
 		
