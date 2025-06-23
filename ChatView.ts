@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, MarkdownRenderer } from 'obsidian';
-import { LLMService, createLLMService, ChatMessage as LLMChatMessage } from './LLMService';
+import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import LocalLLMPlugin from './main';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
@@ -9,6 +9,7 @@ interface ChatMessage {
 	role: 'user' | 'assistant';
 	content: string;
 	timestamp: Date;
+	isStreaming?: boolean;
 }
 
 export class ChatView extends ItemView {
@@ -19,6 +20,7 @@ export class ChatView extends ItemView {
 	private sendButton: HTMLButtonElement;
 	private llmService: LLMService;
 	private plugin: LocalLLMPlugin;
+	private isStreaming: boolean = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -111,6 +113,11 @@ export class ChatView extends ItemView {
 	}
 
 	private async sendMessage() {
+		if (this.isStreaming) {
+			console.log('Already streaming, ignoring new message');
+			return;
+		}
+
 		const content = this.inputElement.value.trim();
 		if (!content) return;
 
@@ -128,53 +135,121 @@ export class ChatView extends ItemView {
 		this.addMessage(userMessage);
 		this.inputElement.value = '';
 
-		// Show loading indicator
-		const loadingMessage: ChatMessage = {
-			id: 'loading-' + Date.now(),
+		// Disable input while streaming
+		this.setInputEnabled(false);
+		this.isStreaming = true;
+
+		// Create streaming assistant message
+		const assistantMessage: ChatMessage = {
+			id: 'streaming-' + Date.now(),
 			role: 'assistant',
-			content: 'Thinking...',
-			timestamp: new Date()
+			content: '',
+			timestamp: new Date(),
+			isStreaming: true
 		};
 
-		this.addMessage(loadingMessage);
+		this.addMessage(assistantMessage);
 
 		try {
 			// Convert chat history to LLM format
 			const conversationHistory: LLMChatMessage[] = this.messages
-				.filter(m => m.id !== loadingMessage.id && m.id !== 'welcome')
+				.filter(m => !m.isStreaming && m.id !== 'welcome')
 				.map(m => ({
 					role: m.role,
 					content: m.content
 				}));
 
-			// Call local LLM API
-			const response = await this.llmService.sendMessage(content, conversationHistory);
-			
-			// Remove loading message and add actual response
-			this.removeMessage(loadingMessage.id);
-			
-			const assistantMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: response,
-				timestamp: new Date()
+			// Create streaming callback
+			const streamCallback: StreamCallback = async (chunk: string, isComplete: boolean) => {
+				if (isComplete) {
+					// Finalize the message
+					await this.finalizeStreamingMessage(assistantMessage.id);
+					this.isStreaming = false;
+					this.setInputEnabled(true);
+				} else {
+					// Update the streaming message
+					await this.updateStreamingMessage(assistantMessage.id, chunk);
+				}
 			};
 
-			this.addMessage(assistantMessage);
+			// Call streaming LLM API
+			await this.llmService.sendMessageStream(content, conversationHistory, streamCallback);
+			
 		} catch (error) {
-			// Remove loading message and show error
-			this.removeMessage(loadingMessage.id);
-			
-			const errorMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: `Sorry, I encountered an error: ${error.message}. Please check your local LLM setup and configuration.`,
-				timestamp: new Date()
-			};
-
-			this.addMessage(errorMessage);
-			console.error('Error calling local LLM:', error);
+			// Handle error
+			this.handleStreamingError(assistantMessage.id, error);
+			this.isStreaming = false;
+			this.setInputEnabled(true);
 		}
+	}
+
+	private setInputEnabled(enabled: boolean) {
+		this.inputElement.disabled = !enabled;
+		this.sendButton.disabled = !enabled;
+		
+		if (enabled) {
+			this.inputElement.focus();
+		}
+	}
+
+	private async updateStreamingMessage(messageId: string, chunk: string) {
+		const message = this.messages.find(m => m.id === messageId);
+		if (message) {
+			message.content += chunk;
+			// Update the content directly instead of re-rendering
+			await this.updateStreamingContent(messageId, message.content);
+		}
+	}
+
+	private async updateStreamingContent(messageId: string, content: string) {
+		const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
+		if (messageElement) {
+			const contentEl = messageElement.querySelector('.local-llm-message-content') as HTMLElement;
+			if (contentEl) {
+				// Clear existing content
+				contentEl.empty();
+				// Render markdown for the streaming content
+				await MarkdownRenderer.renderMarkdown(
+					content,
+					contentEl,
+					'',
+					this.plugin
+				);
+				// Add streaming cursor
+				const cursor = contentEl.createEl('span', {
+					cls: 'streaming-cursor',
+					text: '▋'
+				});
+			}
+		}
+	}
+
+	private async finalizeStreamingMessage(messageId: string) {
+		const message = this.messages.find(m => m.id === messageId);
+		if (message) {
+			message.isStreaming = false;
+			// Remove the existing message element and re-render with markdown
+			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
+			if (messageElement) {
+				messageElement.remove();
+			}
+			await this.renderMessage(message);
+		}
+	}
+
+	private handleStreamingError(messageId: string, error: any) {
+		const message = this.messages.find(m => m.id === messageId);
+		if (message) {
+			message.content = `Sorry, I encountered an error: ${error.message}. Please check your local LLM setup and configuration.`;
+			message.isStreaming = false;
+			// Remove the existing message element and re-render
+			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
+			if (messageElement) {
+				messageElement.remove();
+			}
+			this.renderMessage(message);
+		}
+		console.error('Error calling local LLM:', error);
 	}
 
 	private addMessage(message: ChatMessage) {
@@ -190,6 +265,17 @@ export class ChatView extends ItemView {
 		this.messages = this.messages.filter(m => m.id !== messageId);
 	}
 
+	private updateMessageDisplay(messageId: string) {
+		const message = this.messages.find(m => m.id === messageId);
+		if (message) {
+			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
+			if (messageElement) {
+				messageElement.remove();
+			}
+			this.renderMessage(message);
+		}
+	}
+
 	private async renderMessage(message: ChatMessage) {
 		const messageEl = this.messageContainer.createEl('div', {
 			cls: `local-llm-message local-llm-message-${message.role}`,
@@ -201,8 +287,8 @@ export class ChatView extends ItemView {
 		});
 
 		// Render markdown for assistant messages, plain text for user messages
-		if (message.role === 'assistant') {
-			// Use Obsidian's markdown renderer for assistant messages
+		if (message.role === 'assistant' && !message.isStreaming) {
+			// Use Obsidian's markdown renderer for completed assistant messages
 			await MarkdownRenderer.renderMarkdown(
 				message.content,
 				contentEl,
@@ -210,8 +296,16 @@ export class ChatView extends ItemView {
 				this.plugin
 			);
 		} else {
-			// Plain text for user messages
+			// Plain text for user messages or streaming messages
 			contentEl.setText(message.content);
+			
+			// Add streaming indicator
+			if (message.isStreaming) {
+				const cursor = contentEl.createEl('span', {
+					cls: 'streaming-cursor',
+					text: '▋'
+				});
+			}
 		}
 
 		const timestampEl = messageEl.createEl('div', {
