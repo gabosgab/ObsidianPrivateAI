@@ -19,7 +19,7 @@ interface LocalLLMSettings {
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
-	apiEndpoint: 'http://localhost:11434/api/chat',
+	apiEndpoint: 'http://localhost:1234/v1/chat/completions',
 	provider: 'ollama',
 	apiKey: '',
 	maxTokens: 1000,
@@ -137,7 +137,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setName('API Endpoint')
 			.setDesc('The endpoint URL for your local LLM API')
 			.addText(text => text
-				.setPlaceholder('http://localhost:11434/api/chat')
+				.setPlaceholder('http://localhost:1234/v1/chat/completions')
 				.setValue(this.plugin.settings.apiEndpoint)
 				.onChange(async (value) => {
 					this.plugin.settings.apiEndpoint = value;
