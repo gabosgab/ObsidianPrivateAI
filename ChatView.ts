@@ -54,7 +54,7 @@ export class ChatView extends ItemView {
 		// Create new chat button
 		const newChatButton = headerButtons.createEl('button', {
 			cls: 'local-llm-new-chat-button',
-			text: 'Start New Chat',
+			text: 'New Chat',
 			attr: { 'aria-label': 'Start new chat', 'type': 'button' }
 		});
 		newChatButton.addEventListener('click', () => {

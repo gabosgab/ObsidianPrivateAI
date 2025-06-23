@@ -7,6 +7,19 @@
 	flex-direction: column;
 	margin: 0;
 	padding: 0;
+	overflow: hidden; /* Prevent body scrolling */
+}
+
+/* Fixed header */
+.local-llm-chat-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px 15px;
+	background-color: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0; /* Prevent shrinking */
+	z-index: 10; /* Ensure it stays on top */
 }
 
 /* Main chat container with flexbox layout */
@@ -16,6 +29,7 @@
 	height: 100%;
 	max-height: 100%;
 	flex: 1;
+	overflow: hidden; /* Prevent container scrolling */
 }
 
 .local-llm-messages {
@@ -197,6 +211,7 @@
 	border-top: 1px solid var(--background-modifier-border);
 	background-color: var(--background-primary);
 	flex-shrink: 0; /* Prevent shrinking */
+	z-index: 10; /* Ensure it stays on top */
 }
 
 .local-llm-input {
@@ -319,13 +334,6 @@
 	.local-llm-send-button {
 		align-self: stretch;
 	}
-}
-
-.local-llm-chat-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 10px 10px 0 10px;
 }
 
 .local-llm-chat-header h4 {
