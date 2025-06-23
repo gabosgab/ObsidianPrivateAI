@@ -1,6 +1,5 @@
 export interface LLMConfig {
 	apiEndpoint: string;
-	modelName: string;
 	apiKey?: string;
 	maxTokens?: number;
 	temperature?: number;
@@ -13,7 +12,6 @@ export interface ChatMessage {
 
 export interface ChatRequest {
 	messages: ChatMessage[];
-	model: string;
 	max_tokens?: number;
 	temperature?: number;
 	stream?: boolean;
@@ -62,7 +60,6 @@ export class LLMService {
 
 			const request: ChatRequest = {
 				messages,
-				model: this.config.modelName,
 				max_tokens: this.config.maxTokens || 1000,
 				temperature: this.config.temperature || 0.7,
 				stream: false
@@ -94,7 +91,6 @@ export class LLMService {
 
 			const request: ChatRequest = {
 				messages,
-				model: this.config.modelName,
 				max_tokens: this.config.maxTokens || 1000,
 				temperature: this.config.temperature || 0.7,
 				stream: true
@@ -304,7 +300,6 @@ export class LLMService {
 			
 			const testRequest: ChatRequest = {
 				messages: [{ role: 'user', content: 'Hello' }],
-				model: this.config.modelName,
 				max_tokens: 10,
 			};
 
@@ -354,10 +349,6 @@ export class LLMService {
 			errors.push('API endpoint is required');
 		}
 		
-		if (!this.config.modelName) {
-			errors.push('Model name is required');
-		}
-		
 		// Validate URL format
 		try {
 			new URL(this.config.apiEndpoint);
@@ -377,19 +368,15 @@ export function createLLMService(provider: 'ollama' | 'lmstudio' | 'vllm' | 'cus
 	const defaultConfigs = {
 		ollama: {
 			apiEndpoint: 'http://localhost:11434/api/chat',
-			modelName: 'llama2',
 		},
 		lmstudio: {
 			apiEndpoint: 'http://localhost:1234/v1/chat/completions',
-			modelName: 'local-model',
 		},
 		vllm: {
 			apiEndpoint: 'http://localhost:8000/v1/chat/completions',
-			modelName: 'llama-3.1-8b-instruct',
 		},
 		custom: {
 			apiEndpoint: 'http://localhost:8000/v1/chat/completions',
-			modelName: 'custom-model',
 		}
 	};
 

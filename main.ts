@@ -6,7 +6,6 @@ export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
 interface LocalLLMSettings {
 	apiEndpoint: string;
-	modelName: string;
 	provider: 'ollama' | 'lmstudio' | 'vllm' | 'custom';
 	apiKey: string;
 	maxTokens: number;
@@ -15,7 +14,6 @@ interface LocalLLMSettings {
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
 	apiEndpoint: 'http://localhost:11434/api/chat',
-	modelName: 'llama2',
 	provider: 'ollama',
 	apiKey: '',
 	maxTokens: 1000,
@@ -135,17 +133,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Model Name')
-			.setDesc('The model name to use for chat completions')
-			.addText(text => text
-				.setPlaceholder('llama2')
-				.setValue(this.plugin.settings.modelName)
-				.onChange(async (value) => {
-					this.plugin.settings.modelName = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
 			.setName('API Key (Optional)')
 			.setDesc('API key if required by your LLM provider')
 			.addText(text => text
@@ -199,7 +186,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				const { createLLMService } = await import('./LLMService');
 				const llmService = createLLMService(this.plugin.settings.provider, {
 					apiEndpoint: this.plugin.settings.apiEndpoint,
-					modelName: this.plugin.settings.modelName,
 					apiKey: this.plugin.settings.apiKey,
 					maxTokens: this.plugin.settings.maxTokens,
 					temperature: this.plugin.settings.temperature
