@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, MarkdownRenderer } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
+import { SearchService, SearchResult } from './SearchService';
 import LocalLLMPlugin from './main';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
@@ -10,6 +11,7 @@ interface ChatMessage {
 	content: string;
 	timestamp: Date;
 	isStreaming?: boolean;
+	usedNotes?: SearchResult[];
 }
 
 export class ChatView extends ItemView {
@@ -19,7 +21,9 @@ export class ChatView extends ItemView {
 	private inputElement: HTMLTextAreaElement;
 	private sendButton: HTMLButtonElement;
 	private stopButton: HTMLButtonElement;
+	private searchIndicator: HTMLElement;
 	private llmService: LLMService;
+	private searchService: SearchService;
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
@@ -27,6 +31,7 @@ export class ChatView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
 		this.plugin = plugin;
+		this.searchService = new SearchService(this.app);
 		// Initialize with plugin settings
 		this.updateLLMServiceFromSettings();
 	}
@@ -61,6 +66,21 @@ export class ChatView extends ItemView {
 			this.startNewChat();
 		});
 		
+		// Create search toggle button
+		const searchToggleButton = headerButtons.createEl('button', {
+			cls: 'local-llm-search-toggle-button',
+			attr: { 'aria-label': 'Toggle Obsidian search', 'type': 'button' }
+		});
+		searchToggleButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<path d="M21 21L16.514 16.506L21 21ZM19 10.5C19 15.194 15.194 19 10.5 19C5.806 19 2 15.194 2 10.5C2 5.806 5.806 2 10.5 2C15.194 2 19 5.806 19 10.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+		</svg>`;
+		searchToggleButton.addEventListener('click', () => {
+			this.plugin.settings.enableSearch = !this.plugin.settings.enableSearch;
+			this.plugin.saveSettings();
+			this.updateSearchToggleButton(searchToggleButton);
+		});
+		this.updateSearchToggleButton(searchToggleButton);
+		
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
 			cls: 'local-llm-settings-button',
@@ -88,6 +108,13 @@ export class ChatView extends ItemView {
 		this.inputContainer = chatContainer.createEl('div', {
 			cls: 'local-llm-input-container'
 		});
+
+		// Create search indicator
+		this.searchIndicator = this.inputContainer.createEl('div', {
+			cls: 'local-llm-search-indicator',
+			text: '🔍 Searching vault...'
+		});
+		this.searchIndicator.style.display = 'none';
 
 		// Create input element
 		this.inputElement = this.inputContainer.createEl('textarea', {
@@ -127,7 +154,7 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: 'Hello! I\'m your local LLM assistant. How can I help you today?\n\nYou can ask me questions and I\'ll respond with **markdown formatting** support!',
+			content: 'Hello! I\'m your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.\n\n**Features:**\n- 🤖 Local LLM responses with markdown support\n- 🔍 Automatic vault search for relevant context\n- 📚 Click on used notes to open them\n- ⚙️ Toggle search on/off with the search button\n\nHow can I help you today?',
 			timestamp: new Date()
 		});
 	}
@@ -189,13 +216,38 @@ export class ChatView extends ItemView {
 		this.showStopButton(true);
 		this.isStreaming = true;
 
+		// Search for relevant Obsidian notes if enabled
+		let searchContext = '';
+		let searchResults: SearchResult[] = [];
+		if (this.plugin.settings.enableSearch) {
+			this.showSearchIndicator(true);
+			try {
+				searchResults = await this.searchService.searchVault(content, {
+					maxResults: this.plugin.settings.searchMaxResults,
+					maxTokens: this.plugin.settings.searchMaxTokens,
+					threshold: this.plugin.settings.searchThreshold
+				});
+				
+				if (searchResults.length > 0) {
+					searchContext = this.searchService.formatSearchResults(searchResults);
+					console.log(`Found ${searchResults.length} relevant notes for context`);
+				}
+			} catch (searchError) {
+				console.warn('Error searching vault:', searchError);
+				// Continue without search context if search fails
+			} finally {
+				this.showSearchIndicator(false);
+			}
+		}
+
 		// Create streaming assistant message
 		const assistantMessage: ChatMessage = {
 			id: 'streaming-' + Date.now(),
 			role: 'assistant',
 			content: '',
 			timestamp: new Date(),
-			isStreaming: true
+			isStreaming: true,
+			usedNotes: searchResults.length > 0 ? searchResults : undefined
 		};
 
 		this.addMessage(assistantMessage);
@@ -208,6 +260,20 @@ export class ChatView extends ItemView {
 					role: m.role,
 					content: m.content
 				}));
+
+			// Add system message if search context is available
+			if (searchContext) {
+				conversationHistory.unshift({
+					role: 'system',
+					content: 'You are a helpful assistant with access to the user\'s Obsidian vault. When provided with context from their notes, use that information to provide more accurate and relevant responses. Reference specific notes when appropriate, but focus on answering the user\'s question clearly and concisely.'
+				});
+			}
+
+			// Add search context to the user message if available
+			let enhancedContent = content;
+			if (searchContext) {
+				enhancedContent = `Context from your Obsidian vault:\n${searchContext}\n\nUser question: ${content}`;
+			}
 
 			// Create streaming callback
 			const streamCallback: StreamCallback = async (chunk: string, isComplete: boolean) => {
@@ -225,7 +291,7 @@ export class ChatView extends ItemView {
 			};
 
 			// Call streaming LLM API with abort signal
-			await this.llmService.sendMessageStream(content, conversationHistory, streamCallback, this.currentAbortController.signal);
+			await this.llmService.sendMessageStream(enhancedContent, conversationHistory, streamCallback, this.currentAbortController.signal);
 			
 		} catch (error) {
 			// Handle error
@@ -277,6 +343,14 @@ export class ChatView extends ItemView {
 		} else {
 			this.stopButton.style.display = 'none';
 			this.sendButton.style.display = 'block';
+		}
+	}
+
+	private showSearchIndicator(show: boolean) {
+		if (show) {
+			this.searchIndicator.style.display = 'block';
+		} else {
+			this.searchIndicator.style.display = 'none';
 		}
 	}
 
@@ -396,6 +470,49 @@ export class ChatView extends ItemView {
 			}
 		}
 
+		// Show used notes information for assistant messages
+		if (message.role === 'assistant' && message.usedNotes && message.usedNotes.length > 0) {
+			const notesInfoEl = messageEl.createEl('div', {
+				cls: 'local-llm-used-notes'
+			});
+			
+			const notesHeader = notesInfoEl.createEl('div', {
+				cls: 'local-llm-used-notes-header',
+				text: `📚 Used ${message.usedNotes.length} note${message.usedNotes.length > 1 ? 's' : ''} as context:`
+			});
+			
+			const notesList = notesInfoEl.createEl('div', {
+				cls: 'local-llm-used-notes-list'
+			});
+			
+			message.usedNotes.forEach(note => {
+				const noteEl = notesList.createEl('div', {
+					cls: 'local-llm-used-note-item'
+				});
+				
+				const noteTitle = noteEl.createEl('span', {
+					cls: 'local-llm-used-note-title',
+					text: note.title
+				});
+				
+				const notePath = noteEl.createEl('span', {
+					cls: 'local-llm-used-note-path',
+					text: ` (${note.path})`
+				});
+				
+				const noteRelevance = noteEl.createEl('span', {
+					cls: 'local-llm-used-note-relevance',
+					text: ` - ${(note.relevance * 100).toFixed(1)}% relevant`
+				});
+				
+				// Make the note clickable to open it
+				noteEl.style.cursor = 'pointer';
+				noteEl.addEventListener('click', () => {
+					this.app.workspace.openLinkText(note.path, '', true);
+				});
+			});
+		}
+
 		const timestampEl = messageEl.createEl('div', {
 			cls: 'local-llm-message-timestamp'
 		});
@@ -438,12 +555,22 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: 'Hello! I\'m your local LLM assistant. How can I help you today?\n\nYou can ask me questions and I\'ll respond with **markdown formatting** support!',
+			content: 'Hello! I\'m your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.\n\n**Features:**\n- 🤖 Local LLM responses with markdown support\n- 🔍 Automatic vault search for relevant context\n- 📚 Click on used notes to open them\n- ⚙️ Toggle search on/off with the search button\n\nHow can I help you today?',
 			timestamp: new Date()
 		});
 
 		// Clear input field
 		this.inputElement.value = '';
 		this.inputElement.focus();
+	}
+
+	private updateSearchToggleButton(button: HTMLElement) {
+		if (this.plugin.settings.enableSearch) {
+			button.classList.add('active');
+			button.setAttribute('title', 'Search enabled - Click to disable');
+		} else {
+			button.classList.remove('active');
+			button.setAttribute('title', 'Search disabled - Click to enable');
+		}
 	}
 } 
