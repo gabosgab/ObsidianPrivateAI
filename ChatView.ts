@@ -802,80 +802,35 @@ export class ChatView extends ItemView {
 	}
 
 	private static async getWelcomeMessage(llmService: LLMService): Promise<string> {
-		try {
-			// Test the connection
-			const testResult = await llmService.testConnection();
-			
-			if (testResult.success) {
-				return `What's on your mind?`;
-			} else {
-				return `## 🚀 Welcome to Local LLM Chat!
-
-It looks like your local LLM server isn't running yet. Here's how to get started:
-
-### Quick Setup
-
-1. **Download LM Studio** from [lmstudio.ai](https://lmstudio.ai)
-2. **Install and open LM Studio**
-3. **Download a model** (recommended: Llama 3.1 8B or similar)
-4. **Load the model** in LM Studio
-5. **Start the local server**:
-   - Click the "Local Server" tab on the left
-   - Click "Start Server"
-   - Make sure "CORS" is enabled
-   - Note the port number (default: 1234)
-
-### Configure the Plugin
-
-1. **Open plugin settings** (click the gear icon in the chat header)
-2. **Set the API endpoint** to: \`http://localhost:1234/v1/chat/completions\`
-3. **Save settings** and click the refresh button below
-
-### Troubleshooting
-
-- **Server not starting?** Make sure no other app is using port 1234
-- **Connection refused?** Check that LM Studio is running and the server is started
-- **CORS errors?** Enable CORS in LM Studio's Local Server settings
-
-Once your server is running, click the refresh button below to test the connection.
-
----
-*Need help? Check the [SETUP.md](SETUP.md) file for detailed instructions.*`;
-			}
-		} catch (error) {
-			console.error('Error testing connection for welcome message:', error);
+		// Test the connection
+		const testResult = await llmService.testConnection();
+		
+		if (testResult.success) {
+			return `What's on your mind?`;
+		} else {
 			return `## 🚀 Welcome to Local LLM Chat!
 
 It looks like your local LLM server isn't running yet. Here's how to get started:
 
-### Quick Setup
+### Getting Started
 
-1. **Download LM Studio** from [lmstudio.ai](https://lmstudio.ai)
-2. **Install and open LM Studio**
-3. **Download a model** (recommended: Llama 3.1 8B or similar)
+1. **Download and Install LM Studio** from [lmstudio.ai](https://lmstudio.ai)
+3. **Download a model** 
+   * On Apple Macbooks, we recommend:
+       * \`Mistral 7B Instruct v0.2\` (recommended)
+	   * \`Llama 3.1 8B Instruct\`
+   * On Windows, we recommend: 
+       * \`Gemma 3\`
+	   * Select the largest parameter size that LM Studio says can fit on your GPU
 4. **Load the model** in LM Studio
+   * One the model is downloaded, select the model in the top center toolbar and click "Load Model"
 5. **Start the local server**:
-   - Click the "Local Server" tab on the left
-   - Click "Start Server"
-   - Make sure "CORS" is enabled
-   - Note the port number (default: 1234)
+- Click the "Local Server" tab on the left
+- Make sure "CORS" is enabled
+- Ensure the default port number 1234 is used
+- Click "Start Server"
 
-### Configure the Plugin
-
-1. **Open plugin settings** (click the gear icon in the chat header)
-2. **Set the API endpoint** to: \`http://localhost:1234/v1/chat/completions\`
-3. **Save settings** and click the refresh button below
-
-### Troubleshooting
-
-- **Server not starting?** Make sure no other app is using port 1234
-- **Connection refused?** Check that LM Studio is running and the server is started
-- **CORS errors?** Enable CORS in LM Studio's Local Server settings
-
-Once your server is running, click the refresh button below to test the connection.
-
----
-*Need help? Check the [SETUP.md](SETUP.md) file for detailed instructions.*`;
+Once your server is running, click the refresh button below to test the connection.`;
 		}
 	}
 } 
