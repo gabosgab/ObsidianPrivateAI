@@ -168,3 +168,4 @@ temp/
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.* 
+data.json
