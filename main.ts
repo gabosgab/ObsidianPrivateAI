@@ -12,6 +12,8 @@ interface LocalLLMSettings {
 	searchMaxResults: number;
 	searchContextPercentage: number;
 	searchThreshold: number;
+	// Context mode setting
+	contextMode: 'open-notes' | 'search' | 'none';
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -21,7 +23,9 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Search defaults
 	searchMaxResults: 5,
 	searchContextPercentage: 50,
-	searchThreshold: 0.3
+	searchThreshold: 0.3,
+	// Default context mode
+	contextMode: 'open-notes'
 };
 
 export default class LocalLLMPlugin extends Plugin {
@@ -66,6 +70,19 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		// Notify all open chat views about the settings change
+		this.notifyChatViewsOfSettingsChange();
+	}
+
+	notifyChatViewsOfSettingsChange() {
+		// Get all open chat view leaves
+		const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+		leaves.forEach(leaf => {
+			const chatView = leaf.view as any;
+			if (chatView && typeof chatView.updateContextModeFromSettings === 'function') {
+				chatView.updateContextModeFromSettings();
+			}
+		});
 	}
 
 	async activateView() {
@@ -219,6 +236,20 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				format: (v) => v.toFixed(2)
 			}
 		);
+
+		// Add context mode setting
+		new Setting(containerEl)
+			.setName('Default Context Mode')
+			.setDesc('The default context mode to use when opening a new chat')
+			.addDropdown(dropdown => dropdown
+				.addOption('open-notes', 'Open Tabs')
+				.addOption('search', 'Search Vault')
+				.addOption('none', 'No Context')
+				.setValue(this.plugin.settings.contextMode)
+				.onChange(async (value) => {
+					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'none';
+					await this.plugin.saveSettings();
+				}));
 
 		// Add connection test button
 		const testButton = containerEl.createEl('button', {

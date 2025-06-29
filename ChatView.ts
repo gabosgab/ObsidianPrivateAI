@@ -35,6 +35,8 @@ export class ChatView extends ItemView {
 		this.searchService = new SearchService(this.app);
 		// Initialize with plugin settings
 		this.updateLLMServiceFromSettings();
+		// Initialize context mode from plugin settings
+		this.contextMode = this.plugin.settings.contextMode;
 	}
 
 	getViewType(): string {
@@ -83,15 +85,13 @@ export class ChatView extends ItemView {
 			.addOption('none', 'None')
 			.onChange(async (value) => {
 				this.contextMode = value as 'search' | 'open-notes' | 'none';
+				// Save the context mode to plugin settings
+				this.plugin.settings.contextMode = this.contextMode;
+				await this.plugin.saveSettings();
 			});
 		
-		// Set initial value based on previous selection or default to 'search'
-		this.contextMode = 'search';
-		if (dropdown.getValue() === 'open-notes') {
-			this.contextMode = 'open-notes';
-		} else if (dropdown.getValue() === 'none') {
-			this.contextMode = 'none';
-		}
+		// Set initial value based on plugin settings
+		dropdown.setValue(this.contextMode);
 		
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
@@ -255,6 +255,20 @@ export class ChatView extends ItemView {
 			maxTokens: this.plugin.settings.maxTokens,
 			temperature: this.plugin.settings.temperature
 		});
+	}
+
+	// Method to update context mode from plugin settings
+	updateContextModeFromSettings() {
+		this.contextMode = this.plugin.settings.contextMode;
+		// Update the dropdown if it exists
+		const dropdown = this.containerEl.querySelector('.local-llm-context-mode-container .dropdown-component') as HTMLElement;
+		if (dropdown) {
+			// Find the dropdown component and update its value
+			const dropdownComponent = (dropdown as any).__component;
+			if (dropdownComponent && typeof dropdownComponent.setValue === 'function') {
+				dropdownComponent.setValue(this.contextMode);
+			}
+		}
 	}
 
 	updateLLMService(config: any) {
