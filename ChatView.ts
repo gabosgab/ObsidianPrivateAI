@@ -27,7 +27,7 @@ export class ChatView extends ItemView {
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
-	private contextMode: 'search' | 'current-note' = 'search';
+	private contextMode: 'current-note' | 'search' = 'current-note';
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -78,8 +78,8 @@ export class ChatView extends ItemView {
 		});
 		
 		const dropdown = new DropdownComponent(contextModeContainer)
-			.addOption('search', 'Search')
 			.addOption('current-note', 'Open Tabs')
+			.addOption('search', 'Sen Tabs')
 			.onChange(async (value) => {
 				this.contextMode = value as 'search' | 'current-note';
 			});
