@@ -523,3 +523,91 @@
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 2px var(--interactive-accent-hover);
 }
+.local-llm-settings-slider {
+  width: 220px;
+  margin: 0 8px 0 0;
+  accent-color: var(--interactive-accent);
+  height: 4px;
+  border-radius: 2px;
+  background:
+    linear-gradient(
+      90deg,
+      var(--interactive-accent) 0%,
+      var(--interactive-accent-hover) 100%);
+}
+.local-llm-settings-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #222;
+  border: 3px solid var(--interactive-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: background 0.2s, border 0.2s;
+}
+.local-llm-settings-slider:focus::-webkit-slider-thumb {
+  outline: 2px solid var(--interactive-accent-hover);
+}
+.local-llm-settings-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #222;
+  border: 3px solid var(--interactive-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: background 0.2s, border 0.2s;
+}
+.local-llm-settings-slider:focus::-moz-range-thumb {
+  outline: 2px solid var(--interactive-accent-hover);
+}
+.local-llm-settings-slider::-ms-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #222;
+  border: 3px solid var(--interactive-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: background 0.2s, border 0.2s;
+}
+.local-llm-settings-slider:focus::-ms-thumb {
+  outline: 2px solid var(--interactive-accent-hover);
+}
+.local-llm-settings-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background:
+    linear-gradient(
+      90deg,
+      var(--interactive-accent) 0%,
+      var(--interactive-accent-hover) 100%);
+}
+.local-llm-settings-slider::-ms-fill-lower {
+  background: var(--interactive-accent);
+}
+.local-llm-settings-slider::-ms-fill-upper {
+  background: var(--interactive-accent-hover);
+}
+.local-llm-settings-slider:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+.local-llm-slider-value {
+  font-size: 1.15em;
+  color: var(--text-normal);
+  min-width: 40px;
+  display: inline-block;
+  text-align: right;
+  vertical-align: middle;
+}
+.local-llm-settings-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background:
+    linear-gradient(
+      90deg,
+      var(--interactive-accent) 0%,
+      var(--interactive-accent-hover) 100%);
+}
+.local-llm-settings-slider::-ms-tooltip {
+  display: none;
+}
