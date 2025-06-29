@@ -27,7 +27,7 @@ export class ChatView extends ItemView {
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
-	private contextMode: 'current-note' | 'search' = 'current-note';
+	private contextMode: 'open-notes' | 'search' | 'none' = 'open-notes';
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -78,16 +78,19 @@ export class ChatView extends ItemView {
 		});
 		
 		const dropdown = new DropdownComponent(contextModeContainer)
-			.addOption('current-note', 'Open Tabs')
-			.addOption('search', 'Sen Tabs')
+			.addOption('open-notes', 'Open Tabs')
+			.addOption('search', 'Search')
+			.addOption('none', 'None')
 			.onChange(async (value) => {
-				this.contextMode = value as 'search' | 'current-note';
+				this.contextMode = value as 'search' | 'open-notes' | 'none';
 			});
 		
 		// Set initial value based on previous selection or default to 'search'
 		this.contextMode = 'search';
-		if (dropdown.getValue() === 'current-note') {
-			this.contextMode = 'current-note';
+		if (dropdown.getValue() === 'open-notes') {
+			this.contextMode = 'open-notes';
+		} else if (dropdown.getValue() === 'none') {
+			this.contextMode = 'none';
 		}
 		
 		// Create settings button
@@ -299,10 +302,10 @@ export class ChatView extends ItemView {
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		let contextMode: 'search' | 'current-note' = this.contextMode;
+		let contextMode: 'search' | 'open-notes' | 'none' = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
-			if (contextMode === 'current-note') {
+			if (contextMode === 'open-notes') {
 				// Use open tabs as context
 				const openTabs = await this.searchService.getCurrentNoteContext();
 				if (openTabs.length > 0) {
@@ -325,6 +328,9 @@ export class ChatView extends ItemView {
 					searchContext = this.searchService.formatSearchResults(searchResults);
 					console.log(`Found ${searchResults.length} relevant notes for context`);
 				}
+			} else if (contextMode === 'none') {
+				// No context - just use the user's message as-is
+				console.log('No context mode selected - using message without additional context');
 			}
 		} catch (searchError) {
 			console.warn('Error getting context:', searchError);
