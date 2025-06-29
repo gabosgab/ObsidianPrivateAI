@@ -112,7 +112,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Local LLM Chat Settings' });
+		containerEl.createEl('h1', { text: 'Local LLM Chat Settings' });
 
 		new Setting(containerEl)
 			.setName('API Endpoint')
@@ -129,7 +129,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setName('Max Tokens')
 			.setDesc('Maximum number of tokens in the response')
 			.addSlider(slider => slider
-				.setLimits(100, 4000, 100)
+				.setLimits(100, 40000, 100)
 				.setValue(this.plugin.settings.maxTokens)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
@@ -139,15 +139,21 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Temperature')
-			.setDesc('Controls randomness in the response (0 = deterministic, 1 = very random)')
-			.addSlider(slider => slider
-				.setLimits(0, 2, 0.1)
+			.setDesc('Controls randomness in the response (0 = deterministic, 1 = very random) 0.7 is recommended for most models')
+			.addSlider(slider => {
+				slider.setLimits(0, 1, 0.01)
 				.setValue(this.plugin.settings.temperature)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
 					this.plugin.settings.temperature = value;
+					const valueLabel = document.createElement('span');
+					valueLabel.style.marginLeft = '10px';
+					valueLabel.style.fontWeight = 'bold';
+					valueLabel.textContent = value.toFixed(2);
+					slider.sliderEl.parentElement?.appendChild(valueLabel);
 					await this.plugin.saveSettings();
-				}));
+				});
+			});
 
 		// Search settings section
 		containerEl.createEl('h3', { text: 'Obsidian Search Settings' });
