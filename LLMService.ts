@@ -363,28 +363,12 @@ export class LLMService {
 	}
 }
 
-// Factory function to create LLM service based on provider
-export function createLLMService(provider: 'ollama' | 'lmstudio' | 'vllm' | 'custom', config: Partial<LLMConfig>): LLMService {
-	const defaultConfigs = {
-		ollama: {
-			apiEndpoint: 'http://localhost:11434/api/chat',
-		},
-		lmstudio: {
-			apiEndpoint: 'http://localhost:1234/v1/chat/completions',
-		},
-		vllm: {
-			apiEndpoint: 'http://localhost:8000/v1/chat/completions',
-		},
-		custom: {
-			apiEndpoint: 'http://localhost:8000/v1/chat/completions',
-		}
-	};
-
-	const defaultConfig = defaultConfigs[provider];
-	const finalConfig: LLMConfig = {
-		...defaultConfig,
+// Factory function to create LLM service
+export function createLLMService(config: Partial<LLMConfig>): LLMService {
+	const defaultConfig: LLMConfig = {
+		apiEndpoint: 'http://localhost:1234/v1/chat/completions',
 		...config,
 	};
 
-	return new LLMService(finalConfig);
+	return new LLMService(defaultConfig);
 } 

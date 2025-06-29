@@ -6,7 +6,6 @@ export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
 interface LocalLLMSettings {
 	apiEndpoint: string;
-	provider: 'ollama' | 'lmstudio' | 'vllm' | 'custom';
 	apiKey: string;
 	maxTokens: number;
 	temperature: number;
@@ -20,7 +19,6 @@ interface LocalLLMSettings {
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
 	apiEndpoint: 'http://localhost:1234/v1/chat/completions',
-	provider: 'ollama',
 	apiKey: '',
 	maxTokens: 1000,
 	temperature: 0.7,
@@ -117,21 +115,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl('h2', { text: 'Local LLM Chat Settings' });
-
-		new Setting(containerEl)
-			.setName('Provider')
-			.setDesc('Select your local LLM provider')
-			.addDropdown(dropdown => dropdown
-				.addOption('ollama', 'Ollama')
-				.addOption('lmstudio', 'LM Studio')
-				.addOption('vllm', 'vLLM')
-				.addOption('custom', 'Custom')
-				.setValue(this.plugin.settings.provider)
-				.onChange(async (value) => {
-					this.plugin.settings.provider = value as any;
-					await this.plugin.saveSettings();
-					this.display(); // Refresh to show provider-specific settings
-				}));
 
 		new Setting(containerEl)
 			.setName('API Endpoint')
@@ -238,10 +221,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Add provider-specific help text
-		const helpEl = containerEl.createEl('div', { cls: 'setting-item-description' });
-		helpEl.innerHTML = this.getProviderHelpText(this.plugin.settings.provider);
-
 		// Add connection test button
 		const testButton = containerEl.createEl('button', {
 			text: 'Test Connection',
@@ -255,7 +234,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			try {
 				// Create a temporary LLM service to test
 				const { createLLMService } = await import('./LLMService');
-				const llmService = createLLMService(this.plugin.settings.provider, {
+				const llmService = createLLMService({
 					apiEndpoint: this.plugin.settings.apiEndpoint,
 					apiKey: this.plugin.settings.apiKey,
 					maxTokens: this.plugin.settings.maxTokens,
@@ -285,18 +264,5 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				testButton.disabled = false;
 			}
 		});
-	}
-
-	private getProviderHelpText(provider: string): string {
-		switch (provider) {
-			case 'ollama':
-				return '<strong>Ollama Setup:</strong><br>1. Install Ollama from <a href="https://ollama.ai">ollama.ai</a><br>2. Run <code>ollama serve</code><br>3. Pull a model: <code>ollama pull llama2</code>';
-			case 'lmstudio':
-				return '<strong>LM Studio Setup:</strong><br>1. Download LM Studio from <a href="https://lmstudio.ai">lmstudio.ai</a><br>2. Load a model<br>3. Start the local server in the app';
-			case 'vllm':
-				return '<strong>vLLM Setup:</strong><br>1. Install vLLM: <code>pip install vllm</code><br>2. Start server: <code>python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-2-7b-chat-hf</code>';
-			default:
-				return '<strong>Custom Setup:</strong><br>Configure your own LLM endpoint that follows the OpenAI API format.';
-		}
 	}
 } 

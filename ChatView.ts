@@ -260,7 +260,7 @@ How can I help you today?`,
 	// Method to update LLM service from plugin settings
 	updateLLMServiceFromSettings() {
 		console.log('Updating LLM service with settings:', this.plugin.settings);
-		this.llmService = createLLMService(this.plugin.settings.provider, {
+		this.llmService = createLLMService({
 			apiEndpoint: this.plugin.settings.apiEndpoint,
 			apiKey: this.plugin.settings.apiKey,
 			maxTokens: this.plugin.settings.maxTokens,
@@ -268,9 +268,9 @@ How can I help you today?`,
 		});
 	}
 
-	// Method to update LLM service configuration (for external use)
 	updateLLMService(config: any) {
-		this.llmService = createLLMService(config.provider || 'custom', {
+		console.log('Updating LLM service with config:', config);
+		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
 			apiKey: config.apiKey,
 			maxTokens: config.maxTokens,
