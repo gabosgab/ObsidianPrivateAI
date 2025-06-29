@@ -262,7 +262,6 @@ How can I help you today?`,
 		console.log('Updating LLM service with settings:', this.plugin.settings);
 		this.llmService = createLLMService({
 			apiEndpoint: this.plugin.settings.apiEndpoint,
-			apiKey: this.plugin.settings.apiKey,
 			maxTokens: this.plugin.settings.maxTokens,
 			temperature: this.plugin.settings.temperature
 		});
@@ -272,7 +271,6 @@ How can I help you today?`,
 		console.log('Updating LLM service with config:', config);
 		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
-			apiKey: config.apiKey,
 			maxTokens: config.maxTokens,
 			temperature: config.temperature
 		});
