@@ -4,6 +4,46 @@ export interface LLMConfig {
 	temperature?: number;
 }
 
+// Centralized error message function
+function getLLMErrorMessage(error: any, endpoint?: string): string {
+	// Check if it's a network/connection error
+	if (error.message.includes('Failed to fetch') || 
+		error.message.includes('NetworkError') ||
+		error.message.includes('ERR_NETWORK') ||
+		error.message.includes('ERR_CONNECTION_REFUSED') ||
+		error.message.includes('ERR_EMPTY_RESPONSE')) {
+		return `It appears your local LLM server is not running.
+* Check that LM Studio is running and a model is loaded
+* Check that you started local server
+* Check that Cross-Origin-Resource-Sharing CORS is enabled		
+`;
+	}
+	
+	// Check if it's a timeout error
+	if (error.name === 'AbortError' && error.message.includes('timeout')) {
+		return 'Request cancelled';
+	}
+	
+	// Check if it's a server error (5xx)
+	if (error.message.includes('500') || error.message.includes('502') || 
+		error.message.includes('503') || error.message.includes('504')) {
+		return 'Is your LLM server running? 500 error';
+	}
+	
+	// For other errors, return a generic message
+	return `## ⚠️ Connection Error
+
+It appears your local LLM server is not running.
+
+### Troubleshooting Steps
+* Check that LM Studio is running and a model is loaded
+* **In LM Studio, click the Local Server tab on the left hand side:**
+    * Verify that the server is running
+    * Verify that Cross-Origin-Resource-Sharing CORS is enabled
+    * Verify that the port number matches that in the settings page of this plugin
+`;
+}
+
 export interface ChatMessage {
 	role: 'user' | 'assistant' | 'system';
 	content: string;
@@ -71,13 +111,7 @@ export class LLMService {
 			return response.choices[0]?.message?.content || 'No response received';
 		} catch (error) {
 			console.error('Error sending message to LLM:', error);
-			
-			// Provide more specific error messages
-			if (error.message.includes('Failed to fetch')) {
-				throw new Error(`Cannot connect to LLM server at ${this.config.apiEndpoint}. Please check:\n1. Is your LLM server running?\n2. Is the endpoint URL correct?\n3. Are there any firewall/network issues?`);
-			}
-			
-			throw new Error(`Failed to get response from LLM: ${error.message}`);
+			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
 		}
 	}
 
@@ -108,12 +142,7 @@ export class LLMService {
 				return; // Exit gracefully without throwing an error
 			}
 			
-			// Provide more specific error messages
-			if (error.message.includes('Failed to fetch')) {
-				throw new Error(`Cannot connect to LLM server at ${this.config.apiEndpoint}. Please check:\n1. Is your LLM server running?\n2. Is the endpoint URL correct?\n3. Are there any firewall/network issues?`);
-			}
-			
-			throw new Error(`Failed to get streaming response from LLM: ${error.message}`);
+			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
 		}
 	}
 
@@ -147,17 +176,7 @@ export class LLMService {
 			return responseData;
 		} catch (error) {
 			console.error('Fetch error details:', error);
-			
-			// Handle specific error types
-			if (error.name === 'AbortError') {
-				throw new Error('Request timed out after 30 seconds');
-			}
-			
-			if (error.message.includes('Failed to fetch')) {
-				throw new Error(`Network error: ${error.message}`);
-			}
-			
-			throw error;
+			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
 		}
 	}
 
@@ -253,11 +272,7 @@ export class LLMService {
 				throw error;
 			}
 			
-			if (error.message.includes('Failed to fetch')) {
-				throw new Error(`Network error during streaming: ${error.message}`);
-			}
-			
-			throw error;
+			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
 		}
 	}
 
@@ -299,7 +314,7 @@ export class LLMService {
 			console.error('Connection test failed:', error);
 			return { 
 				success: false, 
-				error: error.message 
+				error: getLLMErrorMessage(error, this.config.apiEndpoint)
 			};
 		}
 	}
