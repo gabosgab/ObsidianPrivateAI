@@ -10,7 +10,7 @@ interface LocalLLMSettings {
 	temperature: number;
 	// Search settings
 	searchMaxResults: number;
-	searchMaxTokens: number;
+	searchContextPercentage: number;
 	searchThreshold: number;
 }
 
@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	temperature: 0.7,
 	// Search defaults
 	searchMaxResults: 5,
-	searchMaxTokens: 2000,
+	searchContextPercentage: 50,
 	searchThreshold: 0.3
 };
 
@@ -167,14 +167,14 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Max Context Tokens')
-			.setDesc('Maximum tokens to include from search results')
+			.setName('Context Percentage from Search')
+			.setDesc('Percentage of max tokens to use for search context (50% = 2000 tokens if max tokens is 4000)')
 			.addSlider(slider => slider
-				.setLimits(500, 4000, 100)
-				.setValue(this.plugin.settings.searchMaxTokens)
+				.setLimits(10, 80, 5)
+				.setValue(this.plugin.settings.searchContextPercentage)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
-					this.plugin.settings.searchMaxTokens = value;
+					this.plugin.settings.searchContextPercentage = value;
 					await this.plugin.saveSettings();
 				}));
 
