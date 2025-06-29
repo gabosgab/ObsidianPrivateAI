@@ -521,7 +521,7 @@ export class ChatView extends ItemView {
 	private handleStreamingError(messageId: string, error: any) {
 		const message = this.messages.find(m => m.id === messageId);
 		if (message) {
-			message.content = `Sorry, I encountered an error: ${error.message}. Please check your local LLM setup and configuration.`;
+			message.content = error.message;
 			message.isStreaming = false;
 			// Remove the existing message element and re-render
 			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
