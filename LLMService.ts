@@ -1,6 +1,5 @@
 export interface LLMConfig {
 	apiEndpoint: string;
-	apiKey?: string;
 	maxTokens?: number;
 	temperature?: number;
 }
@@ -123,10 +122,6 @@ export class LLMService {
 			'Content-Type': 'application/json',
 		};
 
-		if (this.config.apiKey) {
-			headers['Authorization'] = `Bearer ${this.config.apiKey}`;
-		}
-
 		console.log('Making API request to:', this.config.apiEndpoint);
 		console.log('Headers:', headers);
 
@@ -135,7 +130,6 @@ export class LLMService {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(request),
-				// Add timeout and other fetch options
 				signal: AbortSignal.timeout(30000), // 30 second timeout
 			});
 
@@ -171,10 +165,6 @@ export class LLMService {
 		const headers: Record<string, string> = {
 			'Content-Type': 'application/json',
 		};
-
-		if (this.config.apiKey) {
-			headers['Authorization'] = `Bearer ${this.config.apiKey}`;
-		}
 
 		console.log('Making streaming API request to:', this.config.apiEndpoint);
 
@@ -320,12 +310,13 @@ export class LLMService {
 			const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
 			console.log('Fetching models from:', modelsEndpoint);
 			
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+			};
+			
 			const response = await fetch(modelsEndpoint, {
 				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					...(this.config.apiKey && { 'Authorization': `Bearer ${this.config.apiKey}` })
-				},
+				headers,
 				signal: AbortSignal.timeout(10000), // 10 second timeout
 			});
 

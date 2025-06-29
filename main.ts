@@ -6,7 +6,6 @@ export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
 interface LocalLLMSettings {
 	apiEndpoint: string;
-	apiKey: string;
 	maxTokens: number;
 	temperature: number;
 	// Search settings
@@ -19,7 +18,6 @@ interface LocalLLMSettings {
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
 	apiEndpoint: 'http://localhost:1234/v1/chat/completions',
-	apiKey: '',
 	maxTokens: 1000,
 	temperature: 0.7,
 	// Search defaults
@@ -128,17 +126,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('API Key (Optional)')
-			.setDesc('API key if required by your LLM provider')
-			.addText(text => text
-				.setPlaceholder('')
-				.setValue(this.plugin.settings.apiKey)
-				.onChange(async (value) => {
-					this.plugin.settings.apiKey = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
 			.setName('Max Tokens')
 			.setDesc('Maximum number of tokens in the response')
 			.addSlider(slider => slider
@@ -236,7 +223,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				const { createLLMService } = await import('./LLMService');
 				const llmService = createLLMService({
 					apiEndpoint: this.plugin.settings.apiEndpoint,
-					apiKey: this.plugin.settings.apiKey,
 					maxTokens: this.plugin.settings.maxTokens,
 					temperature: this.plugin.settings.temperature
 				});
