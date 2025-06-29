@@ -110,6 +110,35 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h1', { text: 'Local LLM Chat Settings' });
 
+		// Helper to create a slider with live value label and custom style
+		const addStyledSlider = (setting: Setting, opts: {
+			min: number, max: number, step: number, value: number, onChange: (value: number) => Promise<void>,
+			format?: (value: number) => string
+		}) => {
+			let valueLabel: HTMLSpanElement | null = null;
+			setting.addSlider(slider => {
+				slider.setLimits(opts.min, opts.max, opts.step)
+				.setValue(opts.value)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					if (valueLabel) valueLabel.textContent = opts.format ? opts.format(value) : value.toString();
+					await opts.onChange(value);
+				});
+				slider.sliderEl.classList.add('local-llm-settings-slider');
+				// Live update label as slider moves
+				slider.sliderEl.addEventListener('input', (e: Event) => {
+					const val = parseFloat((e.target as HTMLInputElement).value);
+					if (valueLabel) valueLabel.textContent = opts.format ? opts.format(val) : val.toString();
+				});
+				valueLabel = document.createElement('span');
+				valueLabel.className = 'local-llm-slider-value';
+				valueLabel.style.marginLeft = '12px';
+				valueLabel.style.fontWeight = 'bold';
+				valueLabel.textContent = opts.format ? opts.format(opts.value) : opts.value.toString();
+				slider.sliderEl.parentElement?.appendChild(valueLabel);
+			});
+		};
+
 		new Setting(containerEl)
 			.setName('API Endpoint')
 			.setDesc('The endpoint URL for your local LLM API')
@@ -121,74 +150,75 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		new Setting(containerEl)
-			.setName('Max Tokens')
-			.setDesc('Maximum number of tokens in the response')
-			.addSlider(slider => slider
-				.setLimits(100, 40000, 100)
-				.setValue(this.plugin.settings.maxTokens)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('Max Tokens')
+				.setDesc('Maximum number of tokens in the response'),
+			{
+				min: 100, max: 40000, step: 100, value: this.plugin.settings.maxTokens,
+				onChange: async (value) => {
 					this.plugin.settings.maxTokens = value;
 					await this.plugin.saveSettings();
-				}));
+				}
+			}
+		);
 
-		new Setting(containerEl)
-			.setName('Temperature')
-			.setDesc('Controls randomness in the response (0 = deterministic, 1 = very random) 0.7 is recommended for most models')
-			.addSlider(slider => {
-				slider.setLimits(0, 1, 0.01)
-				.setValue(this.plugin.settings.temperature)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('Temperature')
+				.setDesc('Controls randomness in the response (0 = deterministic, 1 = very random) 0.7 is recommended for most models'),
+			{
+				min: 0, max: 1, step: 0.01, value: this.plugin.settings.temperature,
+				onChange: async (value) => {
 					this.plugin.settings.temperature = value;
-					const valueLabel = document.createElement('span');
-					valueLabel.style.marginLeft = '10px';
-					valueLabel.style.fontWeight = 'bold';
-					valueLabel.textContent = value.toFixed(2);
-					slider.sliderEl.parentElement?.appendChild(valueLabel);
 					await this.plugin.saveSettings();
-				});
-			});
+				},
+				format: (v) => v.toFixed(2)
+			}
+		);
 
-		// Search settings section
 		containerEl.createEl('h3', { text: 'Obsidian Search Settings' });
 
-		new Setting(containerEl)
-			.setName('Max Search Results')
-			.setDesc('Maximum number of notes to include as context')
-			.addSlider(slider => slider
-				.setLimits(1, 10, 1)
-				.setValue(this.plugin.settings.searchMaxResults)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('Max Search Results')
+				.setDesc('Maximum number of notes to include as context'),
+			{
+				min: 1, max: 10, step: 1, value: this.plugin.settings.searchMaxResults,
+				onChange: async (value) => {
 					this.plugin.settings.searchMaxResults = value;
 					await this.plugin.saveSettings();
-				}));
+				}
+			}
+		);
 
-		new Setting(containerEl)
-			.setName('Context Percentage from Search')
-			.setDesc('Percentage of max tokens to use for search context (50% = 2000 tokens if max tokens is 4000)')
-			.addSlider(slider => slider
-				.setLimits(10, 80, 5)
-				.setValue(this.plugin.settings.searchContextPercentage)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('Context Percentage from Search')
+				.setDesc('Percentage of max tokens to use for search context (50% = 2000 tokens if max tokens is 4000)'),
+			{
+				min: 10, max: 80, step: 5, value: this.plugin.settings.searchContextPercentage,
+				onChange: async (value) => {
 					this.plugin.settings.searchContextPercentage = value;
 					await this.plugin.saveSettings();
-				}));
+				},
+				format: (v) => v + '%'
+			}
+		);
 
-		new Setting(containerEl)
-			.setName('Search Relevance Threshold')
-			.setDesc('Minimum relevance score for notes to be included (0 = include all, 1 = very strict)')
-			.addSlider(slider => slider
-				.setLimits(0, 1, 0.1)
-				.setValue(this.plugin.settings.searchThreshold)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('Search Relevance Threshold')
+				.setDesc('Minimum relevance score for notes to be included (0 = include all, 1 = very strict)'),
+			{
+				min: 0, max: 1, step: 0.1, value: this.plugin.settings.searchThreshold,
+				onChange: async (value) => {
 					this.plugin.settings.searchThreshold = value;
 					await this.plugin.saveSettings();
-				}));
+				},
+				format: (v) => v.toFixed(2)
+			}
+		);
 
 		// Add connection test button
 		const testButton = containerEl.createEl('button', {
