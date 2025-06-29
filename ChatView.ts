@@ -27,6 +27,7 @@ export class ChatView extends ItemView {
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
+	private contextMode: 'search' | 'current-note' = 'search';
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -80,15 +81,13 @@ export class ChatView extends ItemView {
 			.addOption('search', 'Search')
 			.addOption('current-note', 'Open Tabs')
 			.onChange(async (value) => {
-				this.plugin.settings.useCurrentNote = value === 'current-note';
-				await this.plugin.saveSettings();
+				this.contextMode = value as 'search' | 'current-note';
 			});
 		
-		// Set initial value based on settings
-		if (this.plugin.settings.useCurrentNote) {
-			dropdown.setValue('current-note');
-		} else {
-			dropdown.setValue('search');
+		// Set initial value based on previous selection or default to 'search'
+		this.contextMode = 'search';
+		if (dropdown.getValue() === 'current-note') {
+			this.contextMode = 'current-note';
 		}
 		
 		// Create settings button
@@ -308,14 +307,7 @@ How can I help you today?`,
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		// Get the current dropdown value from settings
-		let contextMode: 'search' | 'current-note';
-		if (this.plugin.settings.useCurrentNote) {
-			contextMode = 'current-note';
-		} else {
-			contextMode = 'search';
-		}
-		
+		let contextMode: 'search' | 'current-note' = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
 			if (contextMode === 'current-note') {

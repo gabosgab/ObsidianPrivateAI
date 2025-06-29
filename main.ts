@@ -12,7 +12,6 @@ interface LocalLLMSettings {
 	searchMaxResults: number;
 	searchMaxTokens: number;
 	searchThreshold: number;
-	useCurrentNote: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -22,8 +21,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Search defaults
 	searchMaxResults: 5,
 	searchMaxTokens: 2000,
-	searchThreshold: 0.3,
-	useCurrentNote: false
+	searchThreshold: 0.3
 };
 
 export default class LocalLLMPlugin extends Plugin {
@@ -155,16 +153,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Search settings section
 		containerEl.createEl('h3', { text: 'Obsidian Search Settings' });
-
-		new Setting(containerEl)
-			.setName('Use Current Note as Context')
-			.setDesc('When enabled, uses the currently focused note as context instead of searching the entire vault')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.useCurrentNote)
-				.onChange(async (value) => {
-					this.plugin.settings.useCurrentNote = value;
-					await this.plugin.saveSettings();
-				}));
 
 		new Setting(containerEl)
 			.setName('Max Search Results')
