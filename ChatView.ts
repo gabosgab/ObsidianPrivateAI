@@ -77,19 +77,15 @@ export class ChatView extends ItemView {
 		});
 		
 		const dropdown = new DropdownComponent(contextModeContainer)
-			.addOption('none', 'None')
 			.addOption('search', 'Search')
 			.addOption('current-note', 'Open Tabs')
 			.onChange(async (value) => {
-				this.plugin.settings.enableSearch = value !== 'none';
 				this.plugin.settings.useCurrentNote = value === 'current-note';
 				await this.plugin.saveSettings();
 			});
 		
 		// Set initial value based on settings
-		if (!this.plugin.settings.enableSearch) {
-			dropdown.setValue('none');
-		} else if (this.plugin.settings.useCurrentNote) {
+		if (this.plugin.settings.useCurrentNote) {
 			dropdown.setValue('current-note');
 		} else {
 			dropdown.setValue('search');
@@ -313,47 +309,43 @@ How can I help you today?`,
 		let searchResults: SearchResult[] = [];
 		
 		// Get the current dropdown value from settings
-		let contextMode: 'none' | 'search' | 'current-note';
-		if (!this.plugin.settings.enableSearch) {
-			contextMode = 'none';
-		} else if (this.plugin.settings.useCurrentNote) {
+		let contextMode: 'search' | 'current-note';
+		if (this.plugin.settings.useCurrentNote) {
 			contextMode = 'current-note';
 		} else {
 			contextMode = 'search';
 		}
 		
-		if (contextMode !== 'none') {
-			this.showSearchIndicator(true);
-			try {
-				if (contextMode === 'current-note') {
-					// Use open tabs as context
-					const openTabs = await this.searchService.getCurrentNoteContext();
-					if (openTabs.length > 0) {
-						searchResults = openTabs;
-						searchContext = this.searchService.formatSearchResults(searchResults);
-						console.log(`Using ${openTabs.length} open tabs as context`);
-					} else {
-						console.log('No open tabs found, no context will be used');
-					}
-				} else if (contextMode === 'search') {
-					// Search entire vault
-					searchResults = await this.searchService.searchVault(content, {
-						maxResults: this.plugin.settings.searchMaxResults,
-						maxTokens: this.plugin.settings.searchMaxTokens,
-						threshold: this.plugin.settings.searchThreshold
-					});
-					
-					if (searchResults.length > 0) {
-						searchContext = this.searchService.formatSearchResults(searchResults);
-						console.log(`Found ${searchResults.length} relevant notes for context`);
-					}
+		this.showSearchIndicator(true);
+		try {
+			if (contextMode === 'current-note') {
+				// Use open tabs as context
+				const openTabs = await this.searchService.getCurrentNoteContext();
+				if (openTabs.length > 0) {
+					searchResults = openTabs;
+					searchContext = this.searchService.formatSearchResults(searchResults);
+					console.log(`Using ${openTabs.length} open tabs as context`);
+				} else {
+					console.log('No open tabs found, no context will be used');
 				}
-			} catch (searchError) {
-				console.warn('Error getting context:', searchError);
-				// Continue without search context if search fails
-			} finally {
-				this.showSearchIndicator(false);
+			} else if (contextMode === 'search') {
+				// Search entire vault
+				searchResults = await this.searchService.searchVault(content, {
+					maxResults: this.plugin.settings.searchMaxResults,
+					maxTokens: this.plugin.settings.searchMaxTokens,
+					threshold: this.plugin.settings.searchThreshold
+				});
+				
+				if (searchResults.length > 0) {
+					searchContext = this.searchService.formatSearchResults(searchResults);
+					console.log(`Found ${searchResults.length} relevant notes for context`);
+				}
 			}
+		} catch (searchError) {
+			console.warn('Error getting context:', searchError);
+			// Continue without search context if search fails
+		} finally {
+			this.showSearchIndicator(false);
 		}
 
 		// Create streaming assistant message
