@@ -61,7 +61,6 @@
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
-  white-space: pre-wrap;
   word-wrap: break-word;
 }
 .local-llm-message-content p {
