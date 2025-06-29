@@ -489,20 +489,21 @@
 	font-style: italic;
 }
 
-/* Copy button */
+/* Copy button for assistant messages */
 .local-llm-copy-button {
 	position: absolute;
 	top: 8px;
 	right: 8px;
-	background: var(--background-secondary);
+	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 4px;
 	padding: 4px;
 	cursor: pointer;
 	opacity: 0;
-	transition: all 0.2s ease;
-	color: var(--text-muted);
-	z-index: 10;
+	transition: opacity 0.2s ease, background-color 0.2s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .local-llm-message:hover .local-llm-copy-button {
@@ -510,15 +511,44 @@
 }
 
 .local-llm-copy-button:hover {
-	background: var(--background-modifier-hover);
-	border-color: var(--background-modifier-border-hover);
-	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
 }
 
 .local-llm-copy-button.copied {
-	background: var(--interactive-accent);
-	border-color: var(--interactive-accent);
+	background-color: var(--interactive-success);
 	color: var(--text-on-accent);
+}
+
+/* Refresh button for installation messages */
+.local-llm-refresh-button {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 6px;
+	padding: 8px 16px;
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: 500;
+	margin-top: 10px;
+	transition: background-color 0.2s ease, transform 0.1s ease;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.local-llm-refresh-button:hover:not(:disabled) {
+	background-color: var(--interactive-accent-hover);
+	transform: translateY(-1px);
+}
+
+.local-llm-refresh-button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.local-llm-refresh-button:active:not(:disabled) {
+	transform: translateY(0);
 }
 
 /* Improve text selection in markdown content */
