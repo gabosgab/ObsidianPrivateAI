@@ -817,18 +817,20 @@ It looks like your local LLM server isn't running yet. Here's how to get started
 1. **Download and Install LM Studio** from [lmstudio.ai](https://lmstudio.ai)
 3. **Download a model** 
    * On Apple Macbooks, we recommend:
-       * \`Mistral 7B Instruct v0.2\` (recommended)
-	   * \`Llama 3.1 8B Instruct\`
+	   * \`Gemma 3 12B\` (recommended)
+	   * \`Gemma 3 8B\`
    * On Windows, we recommend: 
        * \`Gemma 3\`
 	   * Select the largest parameter size that LM Studio says can fit on your GPU
 4. **Load the model** in LM Studio
-   * One the model is downloaded, select the model in the top center toolbar and click "Load Model"
+   * One the model is downloaded, select the model in the top center toolbar to load it
 5. **Start the local server**:
-- Click the "Local Server" tab on the left
-- Make sure "CORS" is enabled
-- Ensure the default port number 1234 is used
-- Click "Start Server"
+- Click the "Developer" tab on the left
+- Click Settings:
+   - Make sure "CORS" is enabled
+   - Ensure the default port number 1234 is used
+- In the Status box in the top left
+   - Click the radio button to start the server
 
 Once your server is running, click the refresh button below to test the connection.`;
 		}
