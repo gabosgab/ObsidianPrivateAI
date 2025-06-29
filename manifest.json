@@ -1,11 +1,11 @@
 {
-  "id": "obsidian-local-llm",
-  "name": "Local LLM Chat",
-  "version": "1.0.0",
+  "id": "private-ai",
+  "name": "Private AI",
+  "version": "1.0.1",
   "minAppVersion": "0.15.0",
-  "description": "A plugin that provides a chat interface for interacting with local LLMs directly within Obsidian.",
-  "author": "Your Name",
-  "authorUrl": "",
-  "isDesktopOnly": false,
+  "description": "Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.",
+  "author": "GB",
+  "authorUrl": "https://github.com/gabosgab/",
+  "isDesktopOnly": true,
   "dependencies": []
 } 
