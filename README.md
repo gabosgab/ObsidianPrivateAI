@@ -166,6 +166,22 @@ npm run build
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
+## Attributions
+
+This project respects and is compatible with the original licenses of all code and dependencies used:
+
+### Development Tools
+- **[esbuild](https://esbuild.github.io/)** - MIT License - Used for bundling the plugin
+- **[TypeScript](https://www.typescriptlang.org/)** - Apache-2.0 License - Used for type safety
+- **[Obsidian API](https://github.com/obsidianmd/obsidian-api)** - MIT License - Official Obsidian plugin API
+
+### Dependencies
+All development dependencies are used under their respective open-source licenses (MIT, Apache-2.0, ISC, BSD) and are properly externalized in the build process.
+
+### Third-Party Services
+This plugin integrates with local LLM services but does not include any of their code:
+- **[LM Studio](https://lmstudio.ai/)** - Proprietary - Local LLM interface
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE.md).
