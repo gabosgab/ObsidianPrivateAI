@@ -322,9 +322,10 @@ How can I help you today?`,
 				}
 			} else if (contextMode === 'search') {
 				// Search entire vault
+				const maxContextTokens = Math.floor(this.plugin.settings.maxTokens * (this.plugin.settings.searchContextPercentage / 100));
 				searchResults = await this.searchService.searchVault(content, {
 					maxResults: this.plugin.settings.searchMaxResults,
-					maxTokens: this.plugin.settings.searchMaxTokens,
+					maxTokens: maxContextTokens,
 					threshold: this.plugin.settings.searchThreshold
 				});
 				
