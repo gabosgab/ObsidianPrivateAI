@@ -16,7 +16,7 @@ interface LocalLLMSettings {
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
 	apiEndpoint: 'http://localhost:1234/v1/chat/completions',
-	maxTokens: 4000,
+	maxTokens: 10000,
 	temperature: 0.7,
 	// Search defaults
 	searchMaxResults: 5,
