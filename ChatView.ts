@@ -235,15 +235,7 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: `Hello! I'm your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.
-
-**Features:**
-- 🤖 Local LLM responses with markdown support
-- 🔍 Context options: None, Search, or Open Tabs
-- 📚 Click on used notes to open them
-- ⚙️ Configure settings with the settings button
-
-How can I help you today?`,
+			content: ChatView.getWelcomeMessage(),
 			timestamp: new Date()
 		});
 	}
@@ -699,15 +691,7 @@ How can I help you today?`,
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: `Hello! I'm your local LLM assistant with Obsidian integration. I can search through your vault for relevant information to provide more contextual responses.
-
-**Features:**
-- 🤖 Local LLM responses with markdown support
-- 🔍 Context options: None, Search, or Open Tabs
-- 📚 Click on used notes to open them
-- ⚙️ Configure settings with the settings button
-
-How can I help you today?`,
+			content: ChatView.getWelcomeMessage(),
 			timestamp: new Date()
 		});
 
@@ -748,5 +732,9 @@ How can I help you today?`,
 			console.error('Error copying conversation:', error);
 			new Notice('❌ Failed to copy conversation', 2000);
 		}
+	}
+
+	private static getWelcomeMessage(): string {
+		return `What's on your mind?`;
 	}
 } 
