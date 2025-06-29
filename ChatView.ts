@@ -65,8 +65,8 @@ export class ChatView extends ItemView {
 			text: 'New Chat',
 			attr: { 'aria-label': 'Start new chat', 'type': 'button' }
 		});
-		newChatButton.addEventListener('click', () => {
-			this.startNewChat();
+		newChatButton.addEventListener('click', async () => {
+			await this.startNewChat();
 		});
 		
 		// Create context mode dropdown
@@ -238,7 +238,7 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: ChatView.getWelcomeMessage(),
+			content: await ChatView.getWelcomeMessage(this.llmService),
 			timestamp: new Date()
 		});
 	}
@@ -613,6 +613,53 @@ export class ChatView extends ItemView {
 					document.body.removeChild(textArea);
 				}
 			});
+			
+			// Add refresh button for installation messages (welcome messages with installation instructions)
+			if (message.id === 'welcome' && message.content.includes('Welcome to Local LLM Chat!')) {
+				const refreshButton = messageEl.createEl('button', {
+					cls: 'local-llm-refresh-button',
+					text: '🔄 Test Connection',
+					attr: { 'aria-label': 'Test connection to LLM server', 'type': 'button' }
+				});
+				
+				refreshButton.addEventListener('click', async () => {
+					// Show loading state
+					refreshButton.textContent = '🔄 Testing...';
+					refreshButton.disabled = true;
+					
+					try {
+						// Update LLM service with current settings
+						this.updateLLMServiceFromSettings();
+						
+						// Test connection
+						const testResult = await this.llmService.testConnection();
+						
+						if (testResult.success) {
+							// Connection successful - update the welcome message
+							const welcomeMessage = this.messages.find(m => m.id === 'welcome');
+							if (welcomeMessage) {
+								welcomeMessage.content = 'What\'s on your mind?';
+								// Re-render the message
+								this.messageContainer.empty();
+								for (const msg of this.messages) {
+									await this.renderMessage(msg);
+								}
+							}
+							new Notice('✅ Connection successful! You can now start chatting.', 3000);
+						} else {
+							// Connection failed
+							new Notice('❌ Connection failed. Please check your server settings.', 3000);
+							refreshButton.textContent = '🔄 Test Connection';
+							refreshButton.disabled = false;
+						}
+					} catch (error) {
+						console.error('Error testing connection:', error);
+						new Notice('❌ Connection failed. Please check your server settings.', 3000);
+						refreshButton.textContent = '🔄 Test Connection';
+						refreshButton.disabled = false;
+					}
+				});
+			}
 		} else {
 			// Plain text for user messages or streaming messages
 			contentEl.setText(message.content);
@@ -697,7 +744,7 @@ export class ChatView extends ItemView {
 		}
 	}
 
-	private startNewChat() {
+	private async startNewChat() {
 		// Stop any ongoing streaming
 		if (this.isStreaming) {
 			this.stopStreaming();
@@ -711,7 +758,7 @@ export class ChatView extends ItemView {
 		this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
-			content: ChatView.getWelcomeMessage(),
+			content: await ChatView.getWelcomeMessage(this.llmService),
 			timestamp: new Date()
 		});
 
@@ -754,7 +801,81 @@ export class ChatView extends ItemView {
 		}
 	}
 
-	private static getWelcomeMessage(): string {
-		return `What's on your mind?`;
+	private static async getWelcomeMessage(llmService: LLMService): Promise<string> {
+		try {
+			// Test the connection
+			const testResult = await llmService.testConnection();
+			
+			if (testResult.success) {
+				return `What's on your mind?`;
+			} else {
+				return `## 🚀 Welcome to Local LLM Chat!
+
+It looks like your local LLM server isn't running yet. Here's how to get started:
+
+### Quick Setup
+
+1. **Download LM Studio** from [lmstudio.ai](https://lmstudio.ai)
+2. **Install and open LM Studio**
+3. **Download a model** (recommended: Llama 3.1 8B or similar)
+4. **Load the model** in LM Studio
+5. **Start the local server**:
+   - Click the "Local Server" tab on the left
+   - Click "Start Server"
+   - Make sure "CORS" is enabled
+   - Note the port number (default: 1234)
+
+### Configure the Plugin
+
+1. **Open plugin settings** (click the gear icon in the chat header)
+2. **Set the API endpoint** to: \`http://localhost:1234/v1/chat/completions\`
+3. **Save settings** and click the refresh button below
+
+### Troubleshooting
+
+- **Server not starting?** Make sure no other app is using port 1234
+- **Connection refused?** Check that LM Studio is running and the server is started
+- **CORS errors?** Enable CORS in LM Studio's Local Server settings
+
+Once your server is running, click the refresh button below to test the connection.
+
+---
+*Need help? Check the [SETUP.md](SETUP.md) file for detailed instructions.*`;
+			}
+		} catch (error) {
+			console.error('Error testing connection for welcome message:', error);
+			return `## 🚀 Welcome to Local LLM Chat!
+
+It looks like your local LLM server isn't running yet. Here's how to get started:
+
+### Quick Setup
+
+1. **Download LM Studio** from [lmstudio.ai](https://lmstudio.ai)
+2. **Install and open LM Studio**
+3. **Download a model** (recommended: Llama 3.1 8B or similar)
+4. **Load the model** in LM Studio
+5. **Start the local server**:
+   - Click the "Local Server" tab on the left
+   - Click "Start Server"
+   - Make sure "CORS" is enabled
+   - Note the port number (default: 1234)
+
+### Configure the Plugin
+
+1. **Open plugin settings** (click the gear icon in the chat header)
+2. **Set the API endpoint** to: \`http://localhost:1234/v1/chat/completions\`
+3. **Save settings** and click the refresh button below
+
+### Troubleshooting
+
+- **Server not starting?** Make sure no other app is using port 1234
+- **Connection refused?** Check that LM Studio is running and the server is started
+- **CORS errors?** Enable CORS in LM Studio's Local Server settings
+
+Once your server is running, click the refresh button below to test the connection.
+
+---
+*Need help? Check the [SETUP.md](SETUP.md) file for detailed instructions.*`;
+		}
 	}
 } 
