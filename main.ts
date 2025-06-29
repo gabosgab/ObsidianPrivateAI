@@ -9,7 +9,6 @@ interface LocalLLMSettings {
 	maxTokens: number;
 	temperature: number;
 	// Search settings
-	enableSearch: boolean;
 	searchMaxResults: number;
 	searchMaxTokens: number;
 	searchThreshold: number;
@@ -21,7 +20,6 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	maxTokens: 4000,
 	temperature: 0.7,
 	// Search defaults
-	enableSearch: true,
 	searchMaxResults: 5,
 	searchMaxTokens: 2000,
 	searchThreshold: 0.3,
@@ -157,16 +155,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Search settings section
 		containerEl.createEl('h3', { text: 'Obsidian Search Settings' });
-
-		new Setting(containerEl)
-			.setName('Enable Obsidian Search')
-			.setDesc('Search your Obsidian vault for relevant information to include in responses')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableSearch)
-				.onChange(async (value) => {
-					this.plugin.settings.enableSearch = value;
-					await this.plugin.saveSettings();
-				}));
 
 		new Setting(containerEl)
 			.setName('Use Current Note as Context')
