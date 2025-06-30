@@ -38,7 +38,7 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async onload() {
 		LoggingUtility.initialize(this);
-		LoggingUtility.log('Loading Local LLM Chat plugin');
+		LoggingUtility.log('Loading Private AI plugin');
 
 		await this.loadSettings();
 
@@ -49,14 +49,14 @@ export default class LocalLLMPlugin extends Plugin {
 		);
 
 		// Add ribbon icon to open chat
-		this.addRibbonIcon('message-circle', 'Open Local LLM Chat', () => {
+		this.addRibbonIcon('message-circle', 'Open Private AI', () => {
 			this.activateView();
 		});
 
 		// Add command to open chat
 		this.addCommand({
 			id: 'open-local-llm-chat',
-			name: 'Open Local LLM Chat',
+			name: 'Open Private AI',
 			callback: () => {
 				this.activateView();
 			}
@@ -67,7 +67,7 @@ export default class LocalLLMPlugin extends Plugin {
 	}
 
 	async onunload() {
-		LoggingUtility.log('Unloading Local LLM Chat plugin');
+		LoggingUtility.log('Unloading Private AI Chat plugin');
 	}
 
 	async loadSettings() {

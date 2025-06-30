@@ -1,6 +1,6 @@
 # Example Usage
 
-This document shows how to set up and use the Local LLM Chat plugin with different providers.
+This document shows how to set up and use the Private AI Chat plugin with different providers.
 
 ## Quick Start with Ollama
 
