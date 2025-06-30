@@ -1,5 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice } from 'obsidian';
 import { ChatView } from './ChatView';
+import { LoggingUtility } from './LoggingUtility';
 import './styles.css';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
@@ -14,6 +15,8 @@ interface LocalLLMSettings {
 	searchThreshold: number;
 	// Context mode setting
 	contextMode: 'open-notes' | 'search' | 'none';
+	// Developer logging setting
+	enableDeveloperLogging: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -25,14 +28,17 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	searchContextPercentage: 50,
 	searchThreshold: 0.3,
 	// Default context mode
-	contextMode: 'open-notes'
+	contextMode: 'open-notes',
+	// Default developer logging setting
+	enableDeveloperLogging: false
 };
 
 export default class LocalLLMPlugin extends Plugin {
 	settings: LocalLLMSettings;
 
 	async onload() {
-		console.log('Loading Local LLM Chat plugin');
+		LoggingUtility.initialize(this);
+		LoggingUtility.log('Loading Local LLM Chat plugin');
 
 		await this.loadSettings();
 
@@ -61,7 +67,7 @@ export default class LocalLLMPlugin extends Plugin {
 	}
 
 	async onunload() {
-		console.log('Unloading Local LLM Chat plugin');
+		LoggingUtility.log('Unloading Local LLM Chat plugin');
 	}
 
 	async loadSettings() {
@@ -251,6 +257,17 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// Add developer logging setting
+		new Setting(containerEl)
+			.setName('Enable Developer Logging')
+			.setDesc('Enable additional logging for debugging')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableDeveloperLogging)
+				.onChange(async (value) => {
+					this.plugin.settings.enableDeveloperLogging = value;
+					await this.plugin.saveSettings();
+				}));
+
 		// Add connection test button
 		const testButton = containerEl.createEl('button', {
 			text: 'Test Connection',
@@ -287,7 +304,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					throw new Error(result.error || 'Unknown connection error');
 				}
 			} catch (error) {
-				console.error('Connection test failed:', error);
+				LoggingUtility.error('Connection test failed:', error);
 				new Notice(`❌ Connection failed: ${error.message}`);
 				testButton.setText('Test Connection');
 				testButton.disabled = false;

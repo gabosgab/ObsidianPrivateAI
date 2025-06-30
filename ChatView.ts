@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
+import { LoggingUtility } from './LoggingUtility';
 import LocalLLMPlugin from './main';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
@@ -249,7 +250,7 @@ export class ChatView extends ItemView {
 
 	// Method to update LLM service from plugin settings
 	updateLLMServiceFromSettings() {
-		console.log('Updating LLM service with settings:', this.plugin.settings);
+		LoggingUtility.log('Updating LLM service with settings:', this.plugin.settings);
 		this.llmService = createLLMService({
 			apiEndpoint: this.plugin.settings.apiEndpoint,
 			maxTokens: this.plugin.settings.maxTokens,
@@ -272,7 +273,7 @@ export class ChatView extends ItemView {
 	}
 
 	updateLLMService(config: any) {
-		console.log('Updating LLM service with config:', config);
+		LoggingUtility.log('Updating LLM service with config:', config);
 		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
 			maxTokens: config.maxTokens,
@@ -286,7 +287,7 @@ export class ChatView extends ItemView {
 
 		// If already streaming, queue this message or handle it differently
 		if (this.isStreaming) {
-			console.log('Already streaming, but allowing new message to be sent');
+			LoggingUtility.log('Already streaming, but allowing new message to be sent');
 			// We'll allow sending multiple messages, but we need to handle this properly
 		}
 
@@ -325,9 +326,9 @@ export class ChatView extends ItemView {
 				if (openTabs.length > 0) {
 					searchResults = openTabs;
 					searchContext = this.searchService.formatSearchResults(searchResults);
-					console.log(`Using ${openTabs.length} open tabs as context`);
+					LoggingUtility.log(`Using ${openTabs.length} open tabs as context`);
 				} else {
-					console.log('No open tabs found, no context will be used');
+					LoggingUtility.log('No open tabs found, no context will be used');
 				}
 			} else if (contextMode === 'search') {
 				// Search entire vault
@@ -340,14 +341,14 @@ export class ChatView extends ItemView {
 				
 				if (searchResults.length > 0) {
 					searchContext = this.searchService.formatSearchResults(searchResults);
-					console.log(`Found ${searchResults.length} relevant notes for context`);
+					LoggingUtility.log(`Found ${searchResults.length} relevant notes for context`);
 				}
 			} else if (contextMode === 'none') {
 				// No context - just use the user's message as-is
-				console.log('No context mode selected - using message without additional context');
+				LoggingUtility.log('No context mode selected - using message without additional context');
 			}
 		} catch (searchError) {
-			console.warn('Error getting context:', searchError);
+			LoggingUtility.warn('Error getting context:', searchError);
 			// Continue without search context if search fails
 		} finally {
 			this.showSearchIndicator(false);
@@ -530,7 +531,7 @@ export class ChatView extends ItemView {
 			}
 			this.renderMessage(message);
 		}
-		console.error('Error calling local LLM:', error);
+		LoggingUtility.error('Error calling local LLM:', error);
 	}
 
 	private addMessage(message: ChatMessage) {
@@ -603,7 +604,7 @@ export class ChatView extends ItemView {
 						copyButton.classList.remove('copied');
 					}, 2000);
 				} catch (error) {
-					console.error('Failed to copy text:', error);
+					LoggingUtility.error('Failed to copy text:', error);
 					// Fallback for older browsers
 					const textArea = document.createElement('textarea');
 					textArea.value = message.content;
@@ -653,7 +654,7 @@ export class ChatView extends ItemView {
 							refreshButton.disabled = false;
 						}
 					} catch (error) {
-						console.error('Error testing connection:', error);
+						LoggingUtility.error('Error testing connection:', error);
 						new Notice('❌ Connection failed. Please check your server settings.', 3000);
 						refreshButton.textContent = '🔄 Test Connection';
 						refreshButton.disabled = false;
@@ -785,7 +786,7 @@ export class ChatView extends ItemView {
 				// Show success feedback
 				const notice = new Notice('✅ Conversation copied to clipboard!', 2000);
 			}).catch((error) => {
-				console.error('Failed to copy conversation:', error);
+				LoggingUtility.error('Failed to copy conversation:', error);
 				// Fallback for older browsers
 				const textArea = document.createElement('textarea');
 				textArea.value = conversationText;
@@ -796,7 +797,7 @@ export class ChatView extends ItemView {
 				new Notice('✅ Conversation copied to clipboard!', 2000);
 			});
 		} catch (error) {
-			console.error('Error copying conversation:', error);
+			LoggingUtility.error('Error copying conversation:', error);
 			new Notice('❌ Failed to copy conversation', 2000);
 		}
 	}

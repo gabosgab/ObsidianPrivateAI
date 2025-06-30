@@ -1,3 +1,5 @@
+import { LoggingUtility } from './LoggingUtility';
+
 export interface LLMConfig {
 	apiEndpoint: string;
 	maxTokens?: number;
@@ -104,14 +106,14 @@ export class LLMService {
 				stream: false
 			};
 
-			console.log('Sending request to:', this.config.apiEndpoint);
-			console.log('Request payload:', JSON.stringify(request, null, 2));
+			LoggingUtility.log('Sending request to:', this.config.apiEndpoint);
+			LoggingUtility.log('Request payload:', JSON.stringify(request, null, 2));
 
 			const response = await this.makeAPIRequest(request);
-			return response.choices[0]?.message?.content || 'No response received';
+			return response.choices[0]?.message?.content || 'No response content';
 		} catch (error) {
-			console.error('Error sending message to LLM:', error);
-			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
+			LoggingUtility.error('Error sending message to LLM:', error);
+			throw error;
 		}
 	}
 
@@ -129,20 +131,17 @@ export class LLMService {
 				stream: true
 			};
 
-			console.log('Sending streaming request to:', this.config.apiEndpoint);
-			console.log('Request payload:', JSON.stringify(request, null, 2));
+			LoggingUtility.log('Sending streaming request to:', this.config.apiEndpoint);
+			LoggingUtility.log('Request payload:', JSON.stringify(request, null, 2));
 
 			await this.makeStreamingAPIRequest(request, callback, abortSignal);
 		} catch (error) {
-			console.error('Error sending streaming message to LLM:', error);
-			
-			// Check if it's an abort error - don't throw for user cancellation
 			if (error.name === 'AbortError') {
-				console.log('Request was cancelled by user');
-				return; // Exit gracefully without throwing an error
+				LoggingUtility.log('Request was cancelled by user');
+				return;
 			}
-			
-			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
+			LoggingUtility.error('Error sending streaming message to LLM:', error);
+			throw error;
 		}
 	}
 
@@ -151,8 +150,8 @@ export class LLMService {
 			'Content-Type': 'application/json',
 		};
 
-		console.log('Making API request to:', this.config.apiEndpoint);
-		console.log('Headers:', headers);
+		LoggingUtility.log('Making API request to:', this.config.apiEndpoint);
+		LoggingUtility.log('Headers:', headers);
 
 		try {
 			const response = await fetch(this.config.apiEndpoint, {
@@ -162,20 +161,20 @@ export class LLMService {
 				signal: AbortSignal.timeout(30000), // 30 second timeout
 			});
 
-			console.log('Response status:', response.status);
-			console.log('Response headers:', response.headers);
+			LoggingUtility.log('Response status:', response.status);
+			LoggingUtility.log('Response headers:', response.headers);
 
 			if (!response.ok) {
 				const errorText = await response.text();
-				console.error('API Error Response:', errorText);
+				LoggingUtility.error('API Error Response:', errorText);
 				throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
 			}
 
 			const responseData = await response.json();
-			console.log('Response data:', responseData);
+			LoggingUtility.log('Response data:', responseData);
 			return responseData;
 		} catch (error) {
-			console.error('Fetch error details:', error);
+			LoggingUtility.error('Fetch error details:', error);
 			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
 		}
 	}
@@ -185,7 +184,7 @@ export class LLMService {
 			'Content-Type': 'application/json',
 		};
 
-		console.log('Making streaming API request to:', this.config.apiEndpoint);
+		LoggingUtility.log('Making streaming API request to:', this.config.apiEndpoint);
 
 		try {
 			const response = await fetch(this.config.apiEndpoint, {
@@ -195,11 +194,11 @@ export class LLMService {
 				signal: abortSignal || AbortSignal.timeout(60000), // 60 second timeout for streaming
 			});
 
-			console.log('Streaming response status:', response.status);
+			LoggingUtility.log('Streaming response status:', response.status);
 
 			if (!response.ok) {
 				const errorText = await response.text();
-				console.error('Streaming API Error Response:', errorText);
+				LoggingUtility.error('Streaming API Error Response:', errorText);
 				throw new Error(`Streaming API request failed: ${response.status} ${response.statusText} - ${errorText}`);
 			}
 
@@ -255,7 +254,7 @@ export class LLMService {
 									isCompleted = true;
 								}
 							} catch (parseError) {
-								console.warn('Failed to parse streaming chunk:', data, parseError);
+								LoggingUtility.warn('Failed to parse streaming chunk:', data, parseError);
 							}
 						}
 					}
@@ -264,7 +263,7 @@ export class LLMService {
 				reader.releaseLock();
 			}
 		} catch (error) {
-			console.error('Streaming fetch error details:', error);
+			LoggingUtility.error('Streaming fetch error details:', error);
 			
 			// Handle specific error types
 			if (error.name === 'AbortError') {
@@ -301,7 +300,7 @@ export class LLMService {
 	// Helper method to test connection
 	async testConnection(): Promise<{ success: boolean; error?: string }> {
 		try {
-			console.log('Testing connection to:', this.config.apiEndpoint);
+			LoggingUtility.log('Testing connection to:', this.config.apiEndpoint);
 			
 			const testRequest: ChatRequest = {
 				messages: [{ role: 'user', content: 'Hello' }],
@@ -311,7 +310,7 @@ export class LLMService {
 			await this.makeAPIRequest(testRequest);
 			return { success: true };
 		} catch (error) {
-			console.error('Connection test failed:', error);
+			LoggingUtility.error('Connection test failed:', error);
 			return { 
 				success: false, 
 				error: getLLMErrorMessage(error, this.config.apiEndpoint)
@@ -323,7 +322,7 @@ export class LLMService {
 	async getAvailableModels(): Promise<string[]> {
 		try {
 			const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
-			console.log('Fetching models from:', modelsEndpoint);
+			LoggingUtility.log('Fetching models from:', modelsEndpoint);
 			
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
@@ -342,7 +341,7 @@ export class LLMService {
 			const data = await response.json();
 			return data.data?.map((model: any) => model.id) || [];
 		} catch (error) {
-			console.error('Failed to fetch available models:', error);
+			LoggingUtility.error('Failed to fetch available models:', error);
 			return [];
 		}
 	}
