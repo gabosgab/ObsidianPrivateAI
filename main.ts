@@ -131,7 +131,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h1', { text: 'Local LLM Chat Settings' });
+		containerEl.createEl('h4', { text: 'Private AI' });
 
 		// Helper to create a slider with live value label and custom style
 		const addStyledSlider = (setting: Setting, opts: {
@@ -200,7 +200,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
-		containerEl.createEl('h3', { text: 'Obsidian Search Settings' });
+		containerEl.createEl('h4', { text: 'Search Settings' });
 
 		addStyledSlider(
 			new Setting(containerEl)
