@@ -7,5 +7,7 @@
   "author": "GB",
   "authorUrl": "https://github.com/gabosgab/",
   "isDesktopOnly": true,
-  "dependencies": []
+  "dependencies": [],
+  "repository": "https://github.com/gabosgab/ObsidianPrivateAI",
+  "repositoryUrl": "https://github.com/gabosgab/ObsidianPrivateAI"
 } 
