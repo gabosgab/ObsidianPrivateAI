@@ -45,7 +45,7 @@ export class ChatView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'Local LLM Chat';
+		return 'Private AI';
 	}
 
 	async onOpen() {
@@ -55,7 +55,7 @@ export class ChatView extends ItemView {
 
 		// Header with title and settings button
 		const header = container.createEl('div', { cls: 'local-llm-chat-header' });
-		header.createEl('h4', { text: 'Local LLM Chat' });
+		header.createEl('h4', { text: 'Private AI Chat' });
 		
 		// Create button container for header buttons
 		const headerButtons = header.createEl('div', { cls: 'local-llm-header-buttons' });
@@ -616,7 +616,7 @@ export class ChatView extends ItemView {
 			});
 			
 			// Add refresh button for installation messages (welcome messages with installation instructions)
-			if (message.id === 'welcome' && message.content.includes('Welcome to Local LLM Chat!')) {
+			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI Chat!')) {
 				const refreshButton = messageEl.createEl('button', {
 					cls: 'local-llm-refresh-button',
 					text: '🔄 Test Connection',
@@ -809,7 +809,7 @@ export class ChatView extends ItemView {
 		if (testResult.success) {
 			return `What's on your mind?`;
 		} else {
-			return `## 🚀 Welcome to Local LLM Chat!
+			return `## 🚀 Welcome to Private AI!
 
 It looks like your local LLM server isn't running yet. Here's how to get started:
 

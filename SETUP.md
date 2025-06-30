@@ -59,7 +59,7 @@ Once Node.js and npm are installed:
 ## Installing in Obsidian
 
 1. **Copy Files**: Copy the entire plugin folder to your Obsidian vault's `.obsidian/plugins/` directory
-2. **Enable Plugin**: In Obsidian, go to Settings > Community Plugins and enable "Local LLM Chat"
+2. **Enable Plugin**: In Obsidian, go to Settings > Community Plugins and enable "Private AI"
 3. **Configure Settings**: Go to the plugin settings and configure your local LLM endpoint
 
 ## Troubleshooting

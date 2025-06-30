@@ -1,4 +1,4 @@
-# Local LLM Chat for Obsidian
+# Private AI Chat for Obsidian
 
 A powerful Obsidian plugin that integrates local Large Language Models (LLMs) with your Obsidian vault, providing intelligent chat capabilities with automatic context retrieval from your notes.
 
