@@ -1,13 +1,10 @@
 {
   "id": "private-ai",
   "name": "Private AI",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "minAppVersion": "0.15.0",
   "description": "Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.",
   "author": "GB",
   "authorUrl": "https://github.com/gabosgab/",
-  "isDesktopOnly": true,
-  "dependencies": [],
-  "repository": "https://github.com/gabosgab/ObsidianPrivateAI",
-  "repositoryUrl": "https://github.com/gabosgab/ObsidianPrivateAI"
-} 
+  "isDesktopOnly": true
+}
