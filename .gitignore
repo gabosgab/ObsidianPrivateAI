@@ -14,6 +14,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Plugin data files
+data.json
+
 # IDE and Editor files
 .vscode/
 .idea/
@@ -167,5 +170,4 @@ temp/
 .yarn/unplugged
 .yarn/build-state.yml
 .yarn/install-state.gz
-.pnp.* 
-data.json
+.pnp.*
