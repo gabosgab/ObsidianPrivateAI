@@ -124,10 +124,9 @@ export class ChatView extends ItemView {
 
 		// Create search indicator
 		this.searchIndicator = this.inputContainer.createEl('div', {
-			cls: 'local-llm-search-indicator',
+			cls: 'local-llm-search-indicator local-llm-search-indicator-hidden',
 			text: '🔍 Searching vault...'
 		});
-		this.searchIndicator.style.display = 'none';
 
 		// Create input element
 		this.inputElement = this.inputContainer.createEl('textarea', {
@@ -195,10 +194,8 @@ export class ChatView extends ItemView {
 					`;
 					
 					// Position menu
-					contextMenu.style.position = 'fixed';
 					contextMenu.style.left = e.pageX + 'px';
 					contextMenu.style.top = e.pageY + 'px';
-					contextMenu.style.zIndex = '1000';
 					
 					document.body.appendChild(contextMenu);
 					
@@ -452,19 +449,25 @@ export class ChatView extends ItemView {
 
 	private showStopButton(show: boolean) {
 		if (show) {
-			this.stopButton.style.display = 'block';
-			this.sendButton.style.display = 'none';
+			this.stopButton.removeClass('local-llm-stop-button-hidden');
+			this.stopButton.addClass('local-llm-stop-button-visible');
+			this.sendButton.removeClass('local-llm-send-button-visible');
+			this.sendButton.addClass('local-llm-send-button-hidden');
 		} else {
-			this.stopButton.style.display = 'none';
-			this.sendButton.style.display = 'block';
+			this.stopButton.removeClass('local-llm-stop-button-visible');
+			this.stopButton.addClass('local-llm-stop-button-hidden');
+			this.sendButton.removeClass('local-llm-send-button-hidden');
+			this.sendButton.addClass('local-llm-send-button-visible');
 		}
 	}
 
 	private showSearchIndicator(show: boolean) {
 		if (show) {
-			this.searchIndicator.style.display = 'block';
+			this.searchIndicator.removeClass('local-llm-search-indicator-hidden');
+			this.searchIndicator.addClass('local-llm-search-indicator-visible');
 		} else {
-			this.searchIndicator.style.display = 'none';
+			this.searchIndicator.removeClass('local-llm-search-indicator-visible');
+			this.searchIndicator.addClass('local-llm-search-indicator-hidden');
 		}
 	}
 
@@ -498,10 +501,7 @@ export class ChatView extends ItemView {
 				});
 				
 				// Ensure text is selectable
-				contentEl.style.userSelect = 'text';
-				(contentEl.style as any).webkitUserSelect = 'text';
-				(contentEl.style as any).mozUserSelect = 'text';
-				(contentEl.style as any).msUserSelect = 'text';
+				contentEl.addClass('local-llm-selectable-content');
 			}
 		}
 	}
@@ -710,7 +710,7 @@ export class ChatView extends ItemView {
 				});
 				
 				// Make the note clickable to open it
-				noteEl.style.cursor = 'pointer';
+				noteEl.addClass('local-llm-note-clickable');
 				noteEl.addEventListener('click', () => {
 					this.app.workspace.openLinkText(note.path, '', true);
 				});

@@ -155,8 +155,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				});
 				valueLabel = document.createElement('span');
 				valueLabel.className = 'local-llm-slider-value';
-				valueLabel.style.marginLeft = '12px';
-				valueLabel.style.fontWeight = 'bold';
 				valueLabel.textContent = opts.format ? opts.format(opts.value) : opts.value.toString();
 				slider.sliderEl.parentElement?.appendChild(valueLabel);
 			});
