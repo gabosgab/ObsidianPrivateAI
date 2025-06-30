@@ -49,7 +49,7 @@ export default class LocalLLMPlugin extends Plugin {
 		);
 
 		// Add ribbon icon to open chat
-		this.addRibbonIcon('message-circle', 'Open Private AI', () => {
+		this.addRibbonIcon('bot-message-square', 'Open Private AI', () => {
 			this.activateView();
 		});
 
