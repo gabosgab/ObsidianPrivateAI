@@ -616,12 +616,8 @@
   box-shadow: 0 0 0 2px var(--interactive-accent-hover);
 }
 .local-llm-slider-value {
-  font-size: 1.15em;
-  color: var(--text-normal);
-  min-width: 40px;
-  display: inline-block;
-  text-align: right;
-  vertical-align: middle;
+  margin-left: 12px;
+  font-weight: bold;
 }
 .local-llm-settings-slider::-moz-range-track {
   height: 4px;
@@ -634,4 +630,32 @@
 }
 .local-llm-settings-slider::-ms-tooltip {
   display: none;
+}
+.local-llm-search-indicator-hidden {
+  display: none !important;
+}
+.local-llm-search-indicator-visible {
+  display: block !important;
+}
+.local-llm-context-menu {
+  position: fixed;
+  z-index: 1000;
+}
+.local-llm-stop-button-visible {
+  display: block !important;
+}
+.local-llm-stop-button-hidden {
+  display: none !important;
+}
+.local-llm-send-button-visible {
+  display: block !important;
+}
+.local-llm-send-button-hidden {
+  display: none !important;
+}
+.local-llm-note-clickable {
+  cursor: pointer;
+}
+.local-llm-selectable-content {
+  user-select: text;
 }

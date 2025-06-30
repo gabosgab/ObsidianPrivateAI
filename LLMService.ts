@@ -1,4 +1,5 @@
 import { LoggingUtility } from './LoggingUtility';
+import { requestUrl } from 'obsidian';
 
 export interface LLMConfig {
 	apiEndpoint: string;
@@ -154,23 +155,23 @@ export class LLMService {
 		LoggingUtility.log('Headers:', headers);
 
 		try {
-			const response = await fetch(this.config.apiEndpoint, {
+			const response = await requestUrl({
+				url: this.config.apiEndpoint,
 				method: 'POST',
 				headers,
-				body: JSON.stringify(request),
-				signal: AbortSignal.timeout(30000), // 30 second timeout
+				body: JSON.stringify(request)
 			});
 
 			LoggingUtility.log('Response status:', response.status);
 			LoggingUtility.log('Response headers:', response.headers);
 
-			if (!response.ok) {
-				const errorText = await response.text();
+			if (response.status >= 400) {
+				const errorText = response.text;
 				LoggingUtility.error('API Error Response:', errorText);
-				throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+				throw new Error(`API request failed: ${response.status} - ${errorText}`);
 			}
 
-			const responseData = await response.json();
+			const responseData = response.json;
 			LoggingUtility.log('Response data:', responseData);
 			return responseData;
 		} catch (error) {
@@ -180,13 +181,20 @@ export class LLMService {
 	}
 
 	private async makeStreamingAPIRequest(request: ChatRequest, callback: StreamCallback, abortSignal?: AbortSignal): Promise<void> {
-		const headers: Record<string, string> = {
-			'Content-Type': 'application/json',
-		};
-
 		LoggingUtility.log('Making streaming API request to:', this.config.apiEndpoint);
 
+		// Note: requestUrl doesn't support streaming, so we fall back to fetch for streaming requests
+		// This is a known limitation when working with streaming APIs in Obsidian plugins
 		try {
+			// For streaming, we need to use native fetch as Obsidian's requestUrl doesn't support streaming
+			if (!window || !window.fetch) {
+				throw new Error('Streaming is not supported in this environment');
+			}
+
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+			};
+
 			const response = await fetch(this.config.apiEndpoint, {
 				method: 'POST',
 				headers,
@@ -328,17 +336,17 @@ export class LLMService {
 				'Content-Type': 'application/json',
 			};
 			
-			const response = await fetch(modelsEndpoint, {
+			const response = await requestUrl({
+				url: modelsEndpoint,
 				method: 'GET',
-				headers,
-				signal: AbortSignal.timeout(10000), // 10 second timeout
+				headers
 			});
 
-			if (!response.ok) {
+			if (response.status >= 400) {
 				throw new Error(`Failed to fetch models: ${response.status}`);
 			}
 
-			const data = await response.json();
+			const data = response.json;
 			return data.data?.map((model: any) => model.id) || [];
 		} catch (error) {
 			LoggingUtility.error('Failed to fetch available models:', error);
