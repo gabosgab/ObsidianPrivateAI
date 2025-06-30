@@ -56,7 +56,7 @@ export default class LocalLLMPlugin extends Plugin {
 		// Add command to open chat
 		this.addCommand({
 			id: 'open-local-llm-chat',
-			name: 'Open Private AI',
+			name: 'Open',
 			callback: () => {
 				this.activateView();
 			}
