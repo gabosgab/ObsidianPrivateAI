@@ -196,11 +196,7 @@ export class ChatView extends ItemView {
 						<div class="local-llm-context-menu-item" data-action="copy">Copy Message</div>
 						<div class="local-llm-context-menu-item" data-action="copy-selected">Copy Selected Text</div>
 					`;
-					
-					// Position menu
-					contextMenu.style.left = e.pageX + 'px';
-					contextMenu.style.top = e.pageY + 'px';
-					
+
 					document.body.appendChild(contextMenu);
 					
 					// Handle menu item clicks
