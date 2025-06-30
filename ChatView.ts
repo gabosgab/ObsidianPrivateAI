@@ -175,57 +175,6 @@ export class ChatView extends ItemView {
 			}
 		});
 
-		// Add context menu for copying text
-		this.messageContainer.addEventListener('contextmenu', (e) => {
-			const target = e.target as HTMLElement;
-			const messageEl = target.closest('.local-llm-message-assistant');
-			
-			if (messageEl) {
-				const messageId = messageEl.getAttribute('data-message-id');
-				const message = this.messages.find(m => m.id === messageId);
-				
-				if (message && message.role === 'assistant') {
-					e.preventDefault();
-					
-					// Create context menu
-					const contextMenu = document.createElement('div');
-					contextMenu.className = 'local-llm-context-menu';
-
-					document.body.appendChild(contextMenu);
-					
-					// Handle menu item clicks
-					contextMenu.addEventListener('click', (menuEvent) => {
-						const action = (menuEvent.target as HTMLElement).getAttribute('data-action');
-						
-						if (action === 'copy') {
-							navigator.clipboard.writeText(message.content);
-							new Notice('✅ Message copied to clipboard!', 2000);
-						} else if (action === 'copy-selected') {
-							const selection = window.getSelection();
-							if (selection && selection.toString().length > 0) {
-								navigator.clipboard.writeText(selection.toString());
-								new Notice('✅ Selected text copied to clipboard!', 2000);
-							}
-						}
-						
-						document.body.removeChild(contextMenu);
-					});
-					
-					// Close menu when clicking outside
-					const closeMenu = () => {
-						if (document.body.contains(contextMenu)) {
-							document.body.removeChild(contextMenu);
-						}
-						document.removeEventListener('click', closeMenu);
-					};
-					
-					setTimeout(() => {
-						document.addEventListener('click', closeMenu);
-					}, 0);
-				}
-			}
-		});
-
 		// Add initial welcome message
 		this.addMessage({
 			id: 'welcome',
