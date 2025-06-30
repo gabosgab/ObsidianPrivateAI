@@ -166,6 +166,10 @@ npm run build
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
+## License
+
+This project is licensed under the [MIT License](LICENSE.md).
+
 ## Attributions
 
 This project respects and is compatible with the original licenses of all code and dependencies used:
