@@ -5,11 +5,6 @@
 npm run version
 ```
 
-2. Push the new version tag
-```
-git tag <tag version>
-git push --tags
-```
+2. The script should open the [ObsidianPrivateAI Releases Page](https://github.com/gabosgab/ObsidianPrivateAI/releases)
 
-3. Open the release pages and publish the release
-[ObsidianPrivateAI Releases Page](https://github.com/gabosgab/ObsidianPrivateAI/releases)
+3. Click Edit and publish the released version
