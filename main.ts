@@ -163,7 +163,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		};
 
 		new Setting(containerEl)
-			.setName('API Endpoint')
+			.setName('API endpoint')
 			.setDesc('The endpoint URL for your local LLM API')
 			.addText(text => text
 				.setPlaceholder('http://localhost:1234/v1/chat/completions')
@@ -175,7 +175,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		addStyledSlider(
 			new Setting(containerEl)
-				.setName('Max Tokens')
+				.setName('Max tokens')
 				.setDesc('Maximum number of tokens in the response'),
 			{
 				min: 100, max: 40000, step: 100, value: this.plugin.settings.maxTokens,
@@ -204,7 +204,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		addStyledSlider(
 			new Setting(containerEl)
-				.setName('Max Search Results')
+				.setName('Max search results')
 				.setDesc('Maximum number of notes to include as context'),
 			{
 				min: 1, max: 10, step: 1, value: this.plugin.settings.searchMaxResults,
@@ -217,7 +217,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		addStyledSlider(
 			new Setting(containerEl)
-				.setName('Context Percentage from Search')
+				.setName('Context percentage from search')
 				.setDesc('Percentage of max tokens to use for search context (50% = 2000 tokens if max tokens is 4000)'),
 			{
 				min: 10, max: 80, step: 5, value: this.plugin.settings.searchContextPercentage,
@@ -231,7 +231,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		addStyledSlider(
 			new Setting(containerEl)
-				.setName('Search Relevance Threshold')
+				.setName('Search relevance threshold')
 				.setDesc('Minimum relevance score for notes to be included (0 = include all, 1 = very strict)'),
 			{
 				min: 0, max: 1, step: 0.1, value: this.plugin.settings.searchThreshold,
@@ -245,7 +245,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Add context mode setting
 		new Setting(containerEl)
-			.setName('Default Context Mode')
+			.setName('Default context mode')
 			.setDesc('The default context mode to use when opening a new chat')
 			.addDropdown(dropdown => dropdown
 				.addOption('open-notes', 'Open Tabs')
@@ -259,7 +259,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Add developer logging setting
 		new Setting(containerEl)
-			.setName('Enable Developer Logging')
+			.setName('Enable developer logging')
 			.setDesc('Enable additional logging for debugging')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableDeveloperLogging)
