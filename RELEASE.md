@@ -2,7 +2,7 @@
 
 1. Run the version bump script
 ```
-npm run version
+npm run release
 ```
 
 2. The script should open the [ObsidianPrivateAI Releases Page](https://github.com/gabosgab/ObsidianPrivateAI/releases)
