@@ -1,4 +1,5 @@
 import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
+import { LoggingUtility } from './LoggingUtility';
 
 export interface SearchResult {
 	file: TFile;
@@ -9,9 +10,9 @@ export interface SearchResult {
 }
 
 export interface SearchOptions {
-	maxResults: number;
-	maxTokens: number;
-	threshold: number;
+	maxResults?: number;
+	maxTokens?: number;
+	threshold?: number;
 }
 
 export class SearchService {
@@ -24,41 +25,33 @@ export class SearchService {
 	/**
 	 * Search for relevant notes in the Obsidian vault
 	 */
-	async searchVault(query: string, options: SearchOptions): Promise<SearchResult[]> {
-		try {
-			console.log('Searching vault for:', query);
-			console.log('Search options:', options);
-			
-			// Get all markdown files
-			const files = this.app.vault.getMarkdownFiles();
-			console.log(`Found ${files.length} markdown files to search`);
-			
-			const results: SearchResult[] = [];
+	async searchVault(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
+		LoggingUtility.log('Searching vault for:', query);
+		LoggingUtility.log('Search options:', options);
 
-			// Search through each file
-			for (const file of files) {
-				try {
-					const result = await this.searchFile(file, query, options);
-					if (result && result.relevance >= options.threshold) {
-						results.push(result);
-						console.log(`Found relevant file: ${result.title} (${(result.relevance * 100).toFixed(1)}% relevant)`);
-					}
-				} catch (error) {
-					console.warn(`Error searching file ${file.path}:`, error);
+		const files = this.app.vault.getMarkdownFiles();
+		LoggingUtility.log(`Found ${files.length} markdown files to search`);
+
+		const results: SearchResult[] = [];
+
+		for (const file of files) {
+			try {
+				const result = await this.searchFile(file, query, options);
+				if (result && result.relevance >= (options.threshold || 0.1)) {
+					results.push(result);
+					LoggingUtility.log(`Found relevant file: ${result.title} (${(result.relevance * 100).toFixed(1)}% relevant)`);
 				}
+			} catch (error) {
+				LoggingUtility.warn(`Error searching file ${file.path}:`, error);
 			}
-
-			// Sort by relevance and limit results
-			results.sort((a, b) => b.relevance - a.relevance);
-			const finalResults = results.slice(0, options.maxResults);
-			
-			console.log(`Search completed. Found ${finalResults.length} relevant notes out of ${results.length} total matches.`);
-			return finalResults;
-
-		} catch (error) {
-			console.error('Error searching vault:', error);
-			return [];
 		}
+
+		// Sort by relevance and limit results
+		const sortedResults = results.sort((a, b) => b.relevance - a.relevance);
+		const finalResults = sortedResults.slice(0, options.maxResults || 5);
+
+		LoggingUtility.log(`Search completed. Found ${finalResults.length} relevant notes out of ${results.length} total matches.`);
+		return finalResults;
 	}
 
 	/**
@@ -73,12 +66,12 @@ export class SearchService {
 			// Calculate relevance score
 			const relevance = this.calculateRelevance(query, content, metadata, file);
 			
-			if (relevance < options.threshold) {
+			if (relevance < (options.threshold || 0.1)) {
 				return null;
 			}
 
 			// Extract relevant content
-			const relevantContent = this.extractRelevantContent(content, query, options.maxTokens);
+			const relevantContent = this.extractRelevantContent(content, query, options.maxTokens || 1000);
 			
 			return {
 				file,
@@ -89,7 +82,7 @@ export class SearchService {
 			};
 
 		} catch (error) {
-			console.warn(`Error processing file ${file.path}:`, error);
+			LoggingUtility.warn(`Error processing file ${file.path}:`, error);
 			return null;
 		}
 	}
@@ -280,11 +273,11 @@ export class SearchService {
 			}
 
 			if (openMarkdownFiles.length === 0) {
-				console.log('No open markdown files found');
+				LoggingUtility.log('No open markdown files found');
 				return [];
 			}
 
-			console.log(`Found ${openMarkdownFiles.length} open markdown files:`, openMarkdownFiles.map(f => f.path));
+			LoggingUtility.log(`Found ${openMarkdownFiles.length} open markdown files:`, openMarkdownFiles.map(f => f.path));
 
 			// Create search results for all open files
 			const results: SearchResult[] = [];
@@ -301,14 +294,14 @@ export class SearchService {
 						path: file.path
 					});
 				} catch (error) {
-					console.warn(`Error reading file ${file.path}:`, error);
+					LoggingUtility.warn(`Error reading file ${file.path}:`, error);
 				}
 			}
 
 			return results;
 
 		} catch (error) {
-			console.warn('Error getting current note context:', error);
+			LoggingUtility.warn('Error getting current note context:', error);
 			return [];
 		}
 	}
