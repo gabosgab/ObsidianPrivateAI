@@ -17,13 +17,3 @@ manifest.version = newVersion;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
 console.log(`Version bumped from ${currentVersion} to ${newVersion}`);
-
-// Create versions.json if it doesn't exist
-const versionsPath = path.join(process.cwd(), 'versions.json');
-if (!fs.existsSync(versionsPath)) {
-    const versions = {
-        "1.0.0": "0.15.0"
-    };
-    fs.writeFileSync(versionsPath, JSON.stringify(versions, null, 2));
-    console.log('Created versions.json');
-} 
