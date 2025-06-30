@@ -190,10 +190,6 @@ export class ChatView extends ItemView {
 					// Create context menu
 					const contextMenu = document.createElement('div');
 					contextMenu.className = 'local-llm-context-menu';
-					contextMenu.innerHTML = `
-						<div class="local-llm-context-menu-item" data-action="copy">Copy Message</div>
-						<div class="local-llm-context-menu-item" data-action="copy-selected">Copy Selected Text</div>
-					`;
 
 					document.body.appendChild(contextMenu);
 					
@@ -579,28 +575,22 @@ export class ChatView extends ItemView {
 			// Add copy button for assistant messages
 			const copyButton = messageEl.createEl('button', {
 				cls: 'local-llm-copy-button',
-				attr: { 'aria-label': 'Copy message content', 'type': 'button' }
+				attr: { 'aria-label': 'Copy message content', 'type': 'button' },
+				text: '🗐'
 			});
-			copyButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<path d="M16 4H18C19.1046 4 20 4.89543 20 6V18C20 19.1046 19.1046 20 18 20H6C4.89543 20 4 19.1046 4 18V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-				<path d="M8 2H16C17.1046 2 18 2.89543 18 4V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V4C6 2.89543 6.89543 2 8 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>`;
 			
 			copyButton.addEventListener('click', async () => {
 				try {
 					await navigator.clipboard.writeText(message.content);
 					
 					// Show success feedback
-					const originalText = copyButton.innerHTML;
-					copyButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>`;
+					copyButton.textContent = '✅';
 					copyButton.classList.add('copied');
 					
 					setTimeout(() => {
-						copyButton.innerHTML = originalText;
+						copyButton.textContent = '🗐';
 						copyButton.classList.remove('copied');
-					}, 2000);
+					}, 1000);
 				} catch (error) {
 					LoggingUtility.error('Failed to copy text:', error);
 					// Fallback for older browsers
