@@ -7,9 +7,12 @@ Effortlessly chat with your notes using locally hosted AI.  Private by design, y
 ## Features
 
 - **Easy Setup**: Easy setup and model swapping with LM Studio
-- **Cross Platform**: Support for most modern Mac and Windows machines
+- **Cross Platform**: Supports for most modern Mac and Windows machines
 - **Integrated Vault Search**: Automatically search your Obsidian vault for relevant information to provide contextual responses and cite specific notes from your vault
+- **Open Tab Context**: Focus your conversation on specific notes for focused insights
 - **Performance Tuning**: Customize models, search parameters, token limits, and more to tune performance for your hardware
+
+![Easy and powerful configuration](img/config.png)
 
 ## Example Queries
 
@@ -21,7 +24,7 @@ Effortlessly chat with your notes using locally hosted AI.  Private by design, y
 - "What did I write about machine learning?"
 - "What are my thoughts on productivity systems?"
 
-## Setup
+## Getting Started + Setup
 
 ⚠️ *We're pending review by the Obsidian plugin review team, in the meantime, you can use our beta test quickstart guide to install and provide feedback.*
 
