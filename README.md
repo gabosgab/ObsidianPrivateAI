@@ -2,6 +2,8 @@
 
 Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.
 
+![Private AI Example Use Case](img/ObsidianExample.gif)
+
 ## Features
 
 - **Easy Setup**: Easy setup and model swapping with LM Studio
