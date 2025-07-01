@@ -1,53 +1,37 @@
 # Private AI Chat for Obsidian
 
-A powerful Obsidian plugin that integrates local Large Language Models (LLMs) with your Obsidian vault, providing intelligent chat capabilities with automatic context retrieval from your notes.
+Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.
 
 ## Features
 
-- 🤖 **Local LLM Integration**: Connect to local LLM servers (Ollama, LM Studio, vLLM, or custom endpoints)
-- 🔍 **Smart Vault Search**: Automatically search your Obsidian vault for relevant information to provide contextual responses
-- 📚 **Context-Aware Responses**: The AI can reference and cite specific notes from your vault
-- 🎯 **Relevance Scoring**: Advanced search algorithm that scores note relevance based on content, tags, headings, and metadata
-- 🔄 **Real-time Streaming**: Get responses as they're generated with streaming support
-- ⚙️ **Flexible Configuration**: Customize search parameters, token limits, and relevance thresholds
-- 🎨 **Markdown Support**: Full markdown rendering in responses
-- 📱 **Clickable References**: Click on referenced notes to open them directly in Obsidian
+- **Easy Setup**: Easy setup and model swapping with LM Studio
+- **Cross Platform**: Support for most modern Mac and Windows machines
+- **Integrated Vault Search**: Automatically search your Obsidian vault for relevant information to provide contextual responses and cite specific notes from your vault
+- **Performance Tuning**: Customize models, search parameters, token limits, and more to tune performance for your hardware
 
-## Search Features
+## Example Queries
 
-The plugin includes an intelligent search system that:
-
-- **Searches across all markdown files** in your vault
-- **Scores relevance** based on:
-  - File names and paths
-  - Content matches
-  - Tags and frontmatter
-  - Headings and structure
-- **Extracts relevant content** from matching notes
-- **Provides context** to the LLM for more accurate responses
-- **Shows which notes were used** in each response
-- **Allows quick access** to referenced notes
+- "Talk to this journal entry like a good friend"
+- "My partner was a jerk to me, help me look at other alternative reasons why they may have reacted the way they did"
+- "I have to have a difficult conversation with a friend, read my journal entry about the situation and help me come up with a good way to talk to my friend compassionately"
+- "When did I first meet Jacob?"
+- "What did frank talk about at our meeting on Obsidian plugins?"
+- "What did I write about machine learning?"
+- "What are my thoughts on productivity systems?"
 
 ## Setup
 
-### 1. Install the Plugin
+⚠️ *We're pending review by the Obsidian plugin review team, in the meantime, you can use our beta test quickstart guide to install and provide feedback.*
 
-We're pending review by the Obsidian plugin review team, in the meantime, you can follow our beta test quickstart guide.
+📃 [Beta Test Quickstart Guide (google doc)](https://docs.google.com/document/d/1Nc3dROvNJC2yl5uiznA5759tQ3afBucKm8paYyjJTBo/edit?usp=sharing)
 
-#### [Beta Test Quickstart Guide (google doc)](https://docs.google.com/document/d/1Nc3dROvNJC2yl5uiznA5759tQ3afBucKm8paYyjJTBo/edit?usp=sharing)
+## Development
 
-### Example Queries
-
-- "What did I write about machine learning?"
-- "Find my notes on project planning"
-- "What are my thoughts on productivity systems?"
-- "Summarize my research on AI"
-
-## Contributing
+### Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
-## Attributions
+### Attributions
 
 This project respects and is compatible with the original licenses of all code and dependencies used:
 
@@ -63,6 +47,6 @@ All development dependencies are used under their respective open-source license
 This plugin integrates with local LLM services but does not include any of their code:
 - **[LM Studio](https://lmstudio.ai/)** - Proprietary - Local LLM interface
 
-## License
+### License
 
 This project is licensed under the [MIT License](LICENSE.md).
