@@ -553,7 +553,7 @@ export class ChatView extends ItemView {
 			});
 			
 			// Add refresh button for installation messages (welcome messages with installation instructions)
-			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI Chat!')) {
+			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI!')) {
 				const refreshButton = messageEl.createEl('button', {
 					cls: 'local-llm-refresh-button',
 					text: '🔄 Test Connection',
@@ -770,7 +770,7 @@ It looks like your local LLM server isn't running yet. Here's how to get started
 - In the Status box in the top left
    - Click the radio button to start the server
 
-Once your server is running, click the refresh button below to test the connection.`;
+Once your server is running, click the test connection button below.`;
 		}
 	}
 } 
