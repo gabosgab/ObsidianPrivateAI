@@ -17,8 +17,14 @@ const newVersion = `${major}.${minor}.${patch + 1}`;
 manifest.version = newVersion;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
+// Update package.json
+const packagePath = path.join(process.cwd(), 'package.json');
+const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+packageJson.version = newVersion;
+fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2));
+
 console.log(`Version bumped from ${currentVersion} to ${newVersion}`);
-execSync(`git add manifest.json `, { stdio: 'inherit' });
+execSync(`git add manifest.json package.json`, { stdio: 'inherit' });
 execSync(`git commit -m "Bump version to ${newVersion}"`, { stdio: 'inherit' });
 
 // Git tag and push
@@ -26,6 +32,7 @@ console.log(`Creating git tag ${newVersion}...`);
 execSync(`git tag ${newVersion}`, { stdio: 'inherit' });
 
 console.log('Pushing tags to remote...');
+execSync('git push', { stdio: 'inherit' });
 execSync('git push --tags', { stdio: 'inherit' });
 
 // Wait 30 seconds
