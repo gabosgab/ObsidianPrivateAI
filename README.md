@@ -28,7 +28,7 @@ Effortlessly chat with your notes using locally hosted AI.  Private by design, y
 
 ⚠️ *We're pending review by the Obsidian plugin review team, in the meantime, you can use our beta test quickstart guide to install and provide feedback.*
 
-📃 [Beta Test Quickstart Guide (google doc)](https://docs.google.com/document/d/1Nc3dROvNJC2yl5uiznA5759tQ3afBucKm8paYyjJTBo/edit?usp=sharing)
+📃 [Beta Test Quickstart Guide (google doc)](GettingStarted.md)
 
 ## Development
 
