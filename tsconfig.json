@@ -12,6 +12,8 @@
     "isolatedModules": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
     "lib": [
       "DOM",
       "ES5",

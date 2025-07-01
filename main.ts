@@ -2,6 +2,7 @@ import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice
 import { ChatView } from './ChatView';
 import { LoggingUtility } from './LoggingUtility';
 import './styles.css';
+import manifest from './manifest.json';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -320,6 +321,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			text: 'Report a Problem',
 			cls: 'mod-cta'
 		});
+
+		// Add version display
+		containerEl.createEl('p', { text: `Private AI Version ${manifest.version}` })
 
 		reportButton.addEventListener('click', () => {
 			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new', '_blank');
