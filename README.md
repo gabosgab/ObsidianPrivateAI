@@ -2,6 +2,12 @@
 
 Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.
 
+* ✅ Your notes stay on your device
+* ✅ LLM processing happens on your local LM Studio server
+* ✅ No data is transmitted to external services
+* ✅ No analytics or tracking
+* ✅ User has full control over any data export (clipboard operations)
+
 ![Private AI Example Use Case](img/ObsidianExample.gif)
 
 ## Features
