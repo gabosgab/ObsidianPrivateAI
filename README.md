@@ -16,9 +16,9 @@ Effortlessly chat with your notes using locally hosted AI.  Private by design, y
 
 ## Example Queries
 
-- "Talk to this journal entry like a good friend"
-- "My partner was a jerk to me, help me look at other alternative reasons why they may have reacted the way they did"
 - "I have to have a difficult conversation with a friend, read my journal entry about the situation and help me come up with a good way to talk to my friend compassionately"
+- "My partner was a jerk to me, help me look at other alternative reasons why they may have reacted the way they did"
+- "Talk to this journal entry like a good friend"
 - "When did I first meet Jacob?"
 - "What did frank talk about at our meeting on Obsidian plugins?"
 - "What did I write about machine learning?"
