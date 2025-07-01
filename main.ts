@@ -255,6 +255,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
+		containerEl.createEl('h4', { text: 'Support' });
+
 		// Add developer logging setting
 		new Setting(containerEl)
 			.setName('Enable developer logging')
@@ -307,6 +309,20 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				testButton.setText('Test Connection');
 				testButton.disabled = false;
 			}
+		});
+
+		// Add spacing between buttons
+		containerEl.createEl('br');
+		containerEl.createEl('br');
+
+		// Add report problem button
+		const reportButton = containerEl.createEl('button', {
+			text: 'Report a Problem',
+			cls: 'mod-cta'
+		});
+
+		reportButton.addEventListener('click', () => {
+			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new', '_blank');
 		});
 	}
 } 
