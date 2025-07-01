@@ -20,7 +20,8 @@
 2. In the **GitHub repository for beta plugin** textbox, paste the following URL:  
    `https://github.com/gabosgab/ObsidianPrivateAI`
 3. In the **Version** dropdown, select **Latest Version**
-4. Click **Add Plugin**
+4. Ensure **Enable plugin after install** is checked
+5. Click **Add Plugin**
 
 ![BRAT Plugin GitHub Repo Configuation](img/brat-repo-config.png)
 
