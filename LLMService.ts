@@ -307,21 +307,31 @@ export class LLMService {
 
 	// Helper method to test connection
 	async testConnection(): Promise<{ success: boolean; error?: string }> {
+		const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
+		
 		try {
-			LoggingUtility.log('Testing connection to:', this.config.apiEndpoint);
+			LoggingUtility.log('Testing connection to:', modelsEndpoint);
 			
-			const testRequest: ChatRequest = {
-				messages: [{ role: 'user', content: 'Hello' }],
-				max_tokens: 10,
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
 			};
+			
+			const response = await requestUrl({
+				url: modelsEndpoint,
+				method: 'GET',
+				headers
+			});
 
-			await this.makeAPIRequest(testRequest);
+			if (response.status >= 400) {
+				throw new Error(`Connection test failed: ${response.status}`);
+			}
+
 			return { success: true };
 		} catch (error) {
 			LoggingUtility.error('Connection test failed:', error);
 			return { 
 				success: false, 
-				error: getLLMErrorMessage(error, this.config.apiEndpoint)
+				error: getLLMErrorMessage(error, modelsEndpoint)
 			};
 		}
 	}
