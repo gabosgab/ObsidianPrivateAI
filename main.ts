@@ -326,7 +326,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		containerEl.createEl('p', { text: `Private AI Version ${manifest.version}` })
 
 		reportButton.addEventListener('click', () => {
-			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new', '_blank');
+			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new?template=bug_report.md', '_blank');
 		});
 	}
 } 
