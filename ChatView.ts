@@ -761,7 +761,7 @@ It looks like your local LLM server isn't running yet. Here's how to get started
        * \`Gemma 3\`
 	   * Select the largest parameter size that LM Studio says can fit on your GPU
 4. **Load the model** in LM Studio
-   * One the model is downloaded, select the model in the top center toolbar to load it
+   * Once the model is downloaded, select the model in the top center toolbar to load it
 5. **Start the local server**:
 - Click the "Developer" tab on the left
 - Click Settings:
