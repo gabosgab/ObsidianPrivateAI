@@ -1,6 +1,6 @@
 # Private AI Chat for Obsidian
 
-Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.
+Effortlessly chat with your notes using a privacy first LLM.  Private by design, your notes never leave the device and use local processing only.
 
 * ✅ Your notes stay on your device
 * ✅ LLM processing happens on your local LM Studio server
