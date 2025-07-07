@@ -8,7 +8,7 @@ export interface LLMConfig {
 }
 
 // Centralized error message function
-function getLLMErrorMessage(error: any, endpoint?: string): string {
+function getLLMErrorMessage(error: Error, endpoint?: string): string {
 	// Check if it's a network/connection error
 	if (error.message.includes('Failed to fetch') || 
 		error.message.includes('NetworkError') ||
@@ -82,6 +82,18 @@ export interface StreamChunk {
 		};
 		finish_reason?: string;
 	}>;
+}
+
+export interface ModelData {
+	id: string;
+	object: string;
+	created?: number;
+	owned_by?: string;
+}
+
+export interface ModelsResponse {
+	data: ModelData[];
+	object: string;
 }
 
 export type StreamCallback = (chunk: string, isComplete: boolean) => void;
@@ -356,8 +368,8 @@ export class LLMService {
 				throw new Error(`Failed to fetch models: ${response.status}`);
 			}
 
-			const data = response.json;
-			return data.data?.map((model: any) => model.id) || [];
+			const data = response.json as ModelsResponse;
+			return data.data?.map((model: ModelData) => model.id) || [];
 		} catch (error) {
 			LoggingUtility.error('Failed to fetch available models:', error);
 			return [];
