@@ -15,6 +15,25 @@ interface ChatMessage {
 	usedNotes?: SearchResult[];
 }
 
+interface LLMConfig {
+	apiEndpoint: string;
+	maxTokens: number;
+	temperature: number;
+}
+
+interface ObsidianApp {
+	setting?: {
+		open: () => void;
+		openTabById: (tabId: string) => void;
+	};
+}
+
+interface DropdownComponentWithPrivateAPI extends DropdownComponent {
+	__component?: {
+		setValue: (value: string) => void;
+	};
+}
+
 export class ChatView extends ItemView {
 	private messages: ChatMessage[] = [];
 	private messageContainer: HTMLElement;
@@ -103,8 +122,7 @@ export class ChatView extends ItemView {
 
 		settingsButton.addEventListener('click', () => {
 			// Open the settings panel and navigate to Private AI plugin settings
-			// @ts-ignore
-			const settingTab = (this.app as any).setting;
+			const settingTab = (this.app as unknown as ObsidianApp).setting;
 			if (settingTab) {
 				settingTab.open();
 				settingTab.openTabById('private-ai');
@@ -205,14 +223,14 @@ export class ChatView extends ItemView {
 		const dropdown = this.containerEl.querySelector('.local-llm-context-mode-container .dropdown-component') as HTMLElement;
 		if (dropdown) {
 			// Find the dropdown component and update its value
-			const dropdownComponent = (dropdown as any).__component;
+			const dropdownComponent = (dropdown as unknown as DropdownComponentWithPrivateAPI).__component;
 			if (dropdownComponent && typeof dropdownComponent.setValue === 'function') {
 				dropdownComponent.setValue(this.contextMode);
 			}
 		}
 	}
 
-	updateLLMService(config: any) {
+	updateLLMService(config: LLMConfig) {
 		LoggingUtility.log('Updating LLM service with config:', config);
 		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
@@ -462,7 +480,7 @@ export class ChatView extends ItemView {
 		}
 	}
 
-	private handleStreamingError(messageId: string, error: any) {
+	private handleStreamingError(messageId: string, error: Error) {
 		const message = this.messages.find(m => m.id === messageId);
 		if (message) {
 			message.content = error.message;
