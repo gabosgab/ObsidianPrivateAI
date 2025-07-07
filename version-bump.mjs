@@ -32,7 +32,7 @@ console.log(`Creating git tag ${newVersion}...`);
 execSync(`git tag ${newVersion}`, { stdio: 'inherit' });
 
 console.log('Pushing tags to remote...');
-execSync('git push', { stdio: 'inherit' });
+execSync('git push origin HEAD:main', { stdio: 'inherit' });
 execSync('git push --tags', { stdio: 'inherit' });
 
 // Wait 30 seconds
@@ -50,7 +50,7 @@ let openCommand;
 if (platform === 'darwin') {
   openCommand = `open "${releaseUrl}"`;
 } else if (platform === 'win32') {
-  openCommand = `start "${releaseUrl}"`;
+  openCommand = `start "" "${releaseUrl}"`;
 } else {
   openCommand = `xdg-open "${releaseUrl}"`;
 }
