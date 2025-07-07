@@ -1,6 +1,10 @@
 import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
 import { LoggingUtility } from './LoggingUtility';
 
+interface MarkdownView {
+	file: TFile;
+}
+
 export interface SearchResult {
 	file: TFile;
 	content: string;
@@ -255,22 +259,22 @@ export class SearchService {
 			const leaves = this.app.workspace.getLeavesOfType('markdown');
 			const openMarkdownFiles: TFile[] = [];
 
-			// Collect all open markdown files
-			for (const leaf of leaves) {
-				const file = (leaf.view as any).file;
-				if (file && file.extension === 'md') {
-					openMarkdownFiles.push(file);
-				}
+					// Collect all open markdown files
+		for (const leaf of leaves) {
+			const file = (leaf.view as unknown as MarkdownView).file;
+			if (file && file.extension === 'md') {
+				openMarkdownFiles.push(file);
 			}
+		}
 
-			// Also check the active leaf in case it's not in the markdown leaves
-			const activeLeaf = this.app.workspace.activeLeaf;
-			if (activeLeaf && activeLeaf.view.getViewType().includes('markdown')) {
-				const activeFile = (activeLeaf.view as any).file;
-				if (activeFile && activeFile.extension === 'md' && !openMarkdownFiles.some(f => f.path === activeFile.path)) {
-					openMarkdownFiles.push(activeFile);
-				}
+					// Also check the active leaf in case it's not in the markdown leaves
+		const activeLeaf = this.app.workspace.activeLeaf;
+		if (activeLeaf && activeLeaf.view.getViewType().includes('markdown')) {
+			const activeFile = (activeLeaf.view as unknown as MarkdownView).file;
+			if (activeFile && activeFile.extension === 'md' && !openMarkdownFiles.some(f => f.path === activeFile.path)) {
+				openMarkdownFiles.push(activeFile);
 			}
+		}
 
 			if (openMarkdownFiles.length === 0) {
 				LoggingUtility.log('No open markdown files found');

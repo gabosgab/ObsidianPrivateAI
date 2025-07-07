@@ -85,7 +85,7 @@ export default class LocalLLMPlugin extends Plugin {
 		// Get all open chat view leaves
 		const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
 		leaves.forEach(leaf => {
-			const chatView = leaf.view as any;
+			const chatView = leaf.view as ChatView;
 			if (chatView && typeof chatView.updateContextModeFromSettings === 'function') {
 				chatView.updateContextModeFromSettings();
 			}
