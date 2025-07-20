@@ -5,6 +5,7 @@ export interface LLMConfig {
 	apiEndpoint: string;
 	maxTokens?: number;
 	temperature?: number;
+	systemPrompt?: string;
 }
 
 // Centralized error message function
@@ -107,10 +108,15 @@ export class LLMService {
 
 	async sendMessage(message: string, conversationHistory: ChatMessage[] = []): Promise<string> {
 		try {
-			const messages: ChatMessage[] = [
-				...conversationHistory,
-				{ role: 'user', content: message }
-			];
+			const messages: ChatMessage[] = [];
+			
+			// Add system prompt if configured
+			if (this.config.systemPrompt && this.config.systemPrompt.trim()) {
+				messages.push({ role: 'system', content: this.config.systemPrompt });
+			}
+			
+			// Add conversation history and current message
+			messages.push(...conversationHistory, { role: 'user', content: message });
 
 			const request: ChatRequest = {
 				messages,
@@ -132,10 +138,15 @@ export class LLMService {
 
 	async sendMessageStream(message: string, conversationHistory: ChatMessage[] = [], callback: StreamCallback, abortSignal?: AbortSignal): Promise<void> {
 		try {
-			const messages: ChatMessage[] = [
-				...conversationHistory,
-				{ role: 'user', content: message }
-			];
+			const messages: ChatMessage[] = [];
+			
+			// Add system prompt if configured
+			if (this.config.systemPrompt && this.config.systemPrompt.trim()) {
+				messages.push({ role: 'system', content: this.config.systemPrompt });
+			}
+			
+			// Add conversation history and current message
+			messages.push(...conversationHistory, { role: 'user', content: message });
 
 			const request: ChatRequest = {
 				messages,

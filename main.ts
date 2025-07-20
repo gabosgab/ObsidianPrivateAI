@@ -10,6 +10,8 @@ interface LocalLLMSettings {
 	apiEndpoint: string;
 	maxTokens: number;
 	temperature: number;
+	// System prompt setting
+	systemPrompt: string;
 	// Search settings
 	searchMaxResults: number;
 	searchContextPercentage: number;
@@ -24,6 +26,8 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	apiEndpoint: 'http://localhost:1234/v1/chat/completions',
 	maxTokens: 10000,
 	temperature: 0.7,
+	// Default system prompt
+	systemPrompt: '',
 	// Search defaults
 	searchMaxResults: 5,
 	searchContextPercentage: 50,
@@ -213,6 +217,29 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
+		// System prompt setting with textarea below
+		new Setting(containerEl)
+			.setName('What personal preferences should be considered in responses?')
+			.setDesc('Customize the AI\'s personality and behavior. This system prompt will be used in all conversations.');
+
+		const systemPromptTextArea = containerEl.createEl('textarea', {
+			cls: 'local-llm-system-prompt-textarea',
+			attr: {
+				placeholder: 'e.g. "You are a helpful assistant. Please be concise and friendly. Consider that I prefer practical examples over theory."',
+				rows: '4'
+			}
+		});
+		systemPromptTextArea.value = this.plugin.settings.systemPrompt;
+		systemPromptTextArea.style.width = '100%';
+		systemPromptTextArea.style.marginBottom = '16px';
+		systemPromptTextArea.style.marginTop = '8px';
+		systemPromptTextArea.style.resize = 'vertical';
+		
+		systemPromptTextArea.addEventListener('input', async () => {
+			this.plugin.settings.systemPrompt = systemPromptTextArea.value;
+			await this.plugin.saveSettings();
+		});
+
 		containerEl.createEl('h4', { text: 'Search Settings' });
 
 		addStyledSlider(
@@ -285,7 +312,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				const llmService = createLLMService({
 					apiEndpoint: this.plugin.settings.apiEndpoint,
 					maxTokens: this.plugin.settings.maxTokens,
-					temperature: this.plugin.settings.temperature
+					temperature: this.plugin.settings.temperature,
+					systemPrompt: this.plugin.settings.systemPrompt
 				});
 
 				// Validate config first
