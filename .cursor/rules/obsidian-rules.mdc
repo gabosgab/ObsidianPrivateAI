@@ -2,3 +2,9 @@
 alwaysApply: true
 ---
 Always follow the python coding conventions, if you run into code that doesn't follow the convention, convert it to match.
+
+Avoid using TypeScript Any data types unless absolutely required
+
+Always use LoggingUtility for logging
+
+After every agent prompt completes, always run `npm run build` and ensure it compiles correctly
