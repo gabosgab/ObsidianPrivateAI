@@ -19,6 +19,7 @@ interface LLMConfig {
 	apiEndpoint: string;
 	maxTokens: number;
 	temperature: number;
+	systemPrompt?: string;
 }
 
 interface ObsidianApp {
@@ -212,7 +213,8 @@ export class ChatView extends ItemView {
 		this.llmService = createLLMService({
 			apiEndpoint: this.plugin.settings.apiEndpoint,
 			maxTokens: this.plugin.settings.maxTokens,
-			temperature: this.plugin.settings.temperature
+			temperature: this.plugin.settings.temperature,
+			systemPrompt: this.plugin.settings.systemPrompt
 		});
 	}
 
@@ -235,7 +237,8 @@ export class ChatView extends ItemView {
 		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
 			maxTokens: config.maxTokens,
-			temperature: config.temperature
+			temperature: config.temperature,
+			systemPrompt: config.systemPrompt
 		});
 	}
 
