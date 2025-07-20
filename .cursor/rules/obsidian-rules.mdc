@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+Always follow the python coding conventions, if you run into code that doesn't follow the convention, convert it to match.
