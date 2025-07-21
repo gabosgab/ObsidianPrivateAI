@@ -48,7 +48,7 @@ export class ChatView extends ItemView {
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
-	private contextMode: 'open-notes' | 'search' | 'none' = 'open-notes';
+	private contextMode: 'open-notes' | 'search' | 'rag' | 'none' = 'open-notes';
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -103,9 +103,10 @@ export class ChatView extends ItemView {
 		const dropdown = new DropdownComponent(contextModeContainer)
 			.addOption('open-notes', 'Open Tabs')
 			.addOption('search', 'Search')
+			.addOption('rag', 'RAG')
 			.addOption('none', 'None')
 			.onChange(async (value) => {
-				this.contextMode = value as 'search' | 'open-notes' | 'none';
+				this.contextMode = value as 'search' | 'open-notes' | 'rag' | 'none';
 				// Save the context mode to plugin settings
 				this.plugin.settings.contextMode = this.contextMode;
 				await this.plugin.saveSettings();
@@ -278,7 +279,7 @@ export class ChatView extends ItemView {
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		let contextMode: 'search' | 'open-notes' | 'none' = this.contextMode;
+		let contextMode: 'search' | 'open-notes' | 'rag' | 'none' = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
 			if (contextMode === 'open-notes') {
@@ -303,6 +304,44 @@ export class ChatView extends ItemView {
 				if (searchResults.length > 0) {
 					searchContext = this.searchService.formatSearchResults(searchResults);
 					LoggingUtility.log(`Found ${searchResults.length} relevant notes for context`);
+				}
+			} else if (contextMode === 'rag') {
+				// Use RAG search
+				if (this.plugin.ragService.isIndexEmpty()) {
+					LoggingUtility.log('RAG index is empty, falling back to regular search');
+					// Fall back to regular search if RAG index is empty
+					const maxContextTokens = Math.floor(this.plugin.settings.maxTokens * (this.plugin.settings.searchContextPercentage / 100));
+					searchResults = await this.searchService.searchVault(content, {
+						maxResults: this.plugin.settings.ragMaxResults,
+						maxTokens: maxContextTokens,
+						threshold: this.plugin.settings.ragThreshold
+					});
+					
+					if (searchResults.length > 0) {
+						searchContext = this.searchService.formatSearchResults(searchResults);
+						LoggingUtility.log(`Found ${searchResults.length} relevant notes using fallback search`);
+					}
+				} else {
+					// Use RAG search
+					const ragResults = await this.plugin.ragService.search(
+						content,
+						this.plugin.settings.ragMaxResults,
+						this.plugin.settings.ragThreshold
+					);
+					
+					if (ragResults.length > 0) {
+						// Convert RAG results to SearchResult format
+						searchResults = ragResults.map(result => ({
+							file: result.file,
+							content: result.content,
+							relevance: result.similarity,
+							title: result.title,
+							path: result.path
+						}));
+						
+						searchContext = this.plugin.ragService.formatSearchResults(ragResults);
+						LoggingUtility.log(`Found ${ragResults.length} relevant notes using RAG`);
+					}
 				}
 			} else if (contextMode === 'none') {
 				// No context - just use the user's message as-is

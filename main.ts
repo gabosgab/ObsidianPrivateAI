@@ -1,6 +1,8 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice } from 'obsidian';
 import { ChatView } from './ChatView';
 import { LoggingUtility } from './LoggingUtility';
+import { RAGService } from './RAGService';
+import { RAGProgressDialog } from './RAGProgressDialog';
 import './styles.css';
 import manifest from './manifest.json';
 
@@ -17,9 +19,16 @@ interface LocalLLMSettings {
 	searchContextPercentage: number;
 	searchThreshold: number;
 	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'none';
+	contextMode: 'open-notes' | 'search' | 'rag' | 'none';
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
+	// RAG settings
+	enableRAG: boolean;
+	ragThreshold: number;
+	ragMaxResults: number;
+	// Embedding settings
+	embeddingEndpoint: string;
+	embeddingModel: string;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -35,17 +44,37 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Default context mode
 	contextMode: 'open-notes',
 	// Default developer logging setting
-	enableDeveloperLogging: false
+	enableDeveloperLogging: false,
+	// RAG defaults
+	enableRAG: false,
+	ragThreshold: 0.5,
+	ragMaxResults: 5,
+	// Embedding defaults
+	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
+	embeddingModel: 'text-embedding-ada-002'
 };
 
 export default class LocalLLMPlugin extends Plugin {
 	settings: LocalLLMSettings;
+	ragService: RAGService;
 
 	async onload() {
 		LoggingUtility.initialize(this);
 		LoggingUtility.log('Loading Private AI plugin');
 
 		await this.loadSettings();
+		
+		// Initialize RAG service
+		this.ragService = new RAGService(this.app, {
+			endpoint: this.settings.embeddingEndpoint,
+			model: this.settings.embeddingModel
+		});
+		await this.ragService.initialize();
+		
+		// Start file watcher if RAG is enabled
+		if (this.settings.enableRAG) {
+			this.ragService.startFileWatcher();
+		}
 
 		// Register the view
 		this.registerView(
@@ -73,6 +102,11 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async onunload() {
 		LoggingUtility.log('Unloading Private AI Chat plugin');
+		
+		// Stop RAG file watcher
+		if (this.ragService) {
+			this.ragService.stopFileWatcher();
+		}
 	}
 
 	async loadSettings() {
@@ -81,6 +115,15 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		
+		// Update RAG service embedding config
+		if (this.ragService) {
+			this.ragService.updateEmbeddingConfig({
+				endpoint: this.settings.embeddingEndpoint,
+				model: this.settings.embeddingModel
+			});
+		}
+		
 		// Notify all open chat views about the settings change
 		this.notifyChatViewsOfSettingsChange();
 	}
@@ -172,10 +215,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.addDropdown(dropdown => dropdown
 				.addOption('open-notes', 'Open Tabs')
 				.addOption('search', 'Search Vault')
+				.addOption('rag', 'RAG Search')
 				.addOption('none', 'No Context')
 				.setValue(this.plugin.settings.contextMode)
 				.onChange(async (value) => {
-					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'none';
+					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'rag' | 'none';
 					await this.plugin.saveSettings();
 				}));
 
@@ -283,6 +327,188 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
+		containerEl.createEl('h4', { text: 'RAG Database Settings' });
+
+		// Enable RAG setting
+		new Setting(containerEl)
+			.setName('Enable RAG database')
+			.setDesc('Enable the Retrieval-Augmented Generation (RAG) database for enhanced context search')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableRAG)
+				.onChange(async (value) => {
+					this.plugin.settings.enableRAG = value;
+					await this.plugin.saveSettings();
+					
+					// Start or stop file watcher based on setting
+					if (value) {
+						this.plugin.ragService.startFileWatcher();
+					} else {
+						this.plugin.ragService.stopFileWatcher();
+					}
+				}));
+
+		// RAG statistics
+		const ragStats = this.plugin.ragService.getStats();
+		new Setting(containerEl)
+			.setName('RAG database status')
+			.setDesc(`Documents indexed: ${ragStats.documentCount} | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB`);
+
+		// Smart update RAG database button
+		new Setting(containerEl)
+			.setName('Update RAG database')
+			.setDesc('Update the RAG database by checking for changed files using checksums. Only processes files that have actually changed.')
+			.addButton(button => button
+				.setButtonText('Smart Update')
+				.setCta()
+				.onClick(async () => {
+					// Create progress dialog
+					const progressDialog = new RAGProgressDialog(
+						this.app,
+						() => {
+							// Cancel callback
+							this.plugin.ragService.cancelIndexing();
+						}
+					);
+					
+					progressDialog.open();
+					
+					// Start smart indexing
+					try {
+						await this.plugin.ragService.buildIndex((current, total, message) => {
+							progressDialog.updateProgress(current, total, message);
+						});
+						
+						// Update stats display
+						const newStats = this.plugin.ragService.getStats();
+						this.updateStatusDisplay(containerEl, newStats);
+						
+						progressDialog.complete('RAG database updated successfully!');
+					} catch (error) {
+						progressDialog.showError(error.message);
+					}
+				}));
+
+		// Force rebuild RAG database button
+		new Setting(containerEl)
+			.setName('Force rebuild RAG database')
+			.setDesc('Completely rebuild the entire RAG database from scratch. Use this if you want to regenerate all embeddings.')
+			.addButton(button => button
+				.setButtonText('Force Rebuild')
+				.setWarning()
+				.onClick(async () => {
+					// Create progress dialog
+					const progressDialog = new RAGProgressDialog(
+						this.app,
+						() => {
+							// Cancel callback
+							this.plugin.ragService.cancelIndexing();
+						}
+					);
+					
+					progressDialog.open();
+					
+					// Start force rebuild
+					try {
+						await this.plugin.ragService.forceRebuildIndex((current, total, message) => {
+							progressDialog.updateProgress(current, total, message);
+						});
+						
+						// Update stats display
+						const newStats = this.plugin.ragService.getStats();
+						this.updateStatusDisplay(containerEl, newStats);
+						
+						progressDialog.complete('RAG database completely rebuilt!');
+					} catch (error) {
+						progressDialog.showError(error.message);
+					}
+				}));
+
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('RAG relevance threshold')
+				.setDesc('Minimum relevance score for RAG results (0 = include all, 1 = very strict)'),
+			{
+				min: 0, max: 1, step: 0.1, value: this.plugin.settings.ragThreshold,
+				onChange: async (value) => {
+					this.plugin.settings.ragThreshold = value;
+					await this.plugin.saveSettings();
+				},
+				format: (v) => v.toFixed(2)
+			}
+		);
+
+		addStyledSlider(
+			new Setting(containerEl)
+				.setName('Max RAG results')
+				.setDesc('Maximum number of notes to retrieve from RAG database'),
+			{
+				min: 1, max: 10, step: 1, value: this.plugin.settings.ragMaxResults,
+				onChange: async (value) => {
+					this.plugin.settings.ragMaxResults = value;
+					await this.plugin.saveSettings();
+				}
+			}
+		);
+
+		// Embedding endpoint setting
+		new Setting(containerEl)
+			.setName('Embedding API endpoint')
+			.setDesc('The endpoint URL for the embedding API (used for generating vector embeddings)')
+			.addText(text => text
+				.setPlaceholder('http://localhost:1234/v1/embeddings')
+				.setValue(this.plugin.settings.embeddingEndpoint)
+				.onChange(async (value) => {
+					this.plugin.settings.embeddingEndpoint = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Embedding model setting
+		new Setting(containerEl)
+			.setName('Embedding model')
+			.setDesc('The model name to use for generating embeddings')
+			.addText(text => text
+				.setPlaceholder('text-embedding-ada-002')
+				.setValue(this.plugin.settings.embeddingModel)
+				.onChange(async (value) => {
+					this.plugin.settings.embeddingModel = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Test embedding connection button
+		new Setting(containerEl)
+			.setName('Test embedding connection')
+			.setDesc('Test if the embedding API endpoint is working correctly')
+			.addButton(button => button
+				.setButtonText('Test Embedding')
+				.setCta()
+				.onClick(async () => {
+					button.setButtonText('Testing...');
+					button.setDisabled(true);
+					
+					try {
+						// Update the embedding service config with current settings
+						this.plugin.ragService.updateEmbeddingConfig({
+							endpoint: this.plugin.settings.embeddingEndpoint,
+							model: this.plugin.settings.embeddingModel
+						});
+						
+						// Test the connection
+						const result = await this.plugin.ragService.testEmbeddingConnection();
+						
+						if (result.success) {
+							new Notice(`✅ Embedding API connection successful! Embedding dimension: ${result.dimensions}`);
+						} else {
+							new Notice(`❌ Embedding API connection failed: ${result.error}`);
+						}
+					} catch (error) {
+						LoggingUtility.error('Embedding test failed:', error);
+						new Notice(`❌ Embedding test failed: ${error.message}`);
+					} finally {
+						button.setButtonText('Test Embedding');
+						button.setDisabled(false);
+					}
+				}));
+
 		containerEl.createEl('h4', { text: 'Support' });
 
 		// Add developer logging setting
@@ -356,5 +582,24 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		reportButton.addEventListener('click', () => {
 			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new?template=bug_report.md', '_blank');
 		});
+	}
+
+	/**
+	 * Update the RAG status display after rebuilding
+	 */
+	private updateStatusDisplay(containerEl: HTMLElement, stats: { documentCount: number; lastUpdated: Date; sizeInBytes: number }): void {
+		// Find the status setting by looking for its text content
+		const settings = containerEl.querySelectorAll('.setting-item');
+		for (let i = 0; i < settings.length; i++) {
+			const setting = settings[i];
+			const nameEl = setting.querySelector('.setting-item-name');
+			if (nameEl && nameEl.textContent === 'RAG database status') {
+				const descEl = setting.querySelector('.setting-item-description');
+				if (descEl) {
+					descEl.textContent = `Documents indexed: ${stats.documentCount} | Last updated: ${stats.lastUpdated.toLocaleString()} | Size: ${(stats.sizeInBytes / 1024).toFixed(1)} KB`;
+				}
+				break;
+			}
+		}
 	}
 } 
