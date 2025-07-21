@@ -17,7 +17,7 @@ interface LocalLLMSettings {
 	searchContextPercentage: number;
 	searchThreshold: number;
 	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'none';
+	contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none';
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
 }
@@ -172,10 +172,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.addDropdown(dropdown => dropdown
 				.addOption('open-notes', 'Open Tabs')
 				.addOption('search', 'Search Vault')
+				.addOption('last-7-days', 'Last 7 Days')
 				.addOption('none', 'No Context')
 				.setValue(this.plugin.settings.contextMode)
 				.onChange(async (value) => {
-					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'none';
+					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'last-7-days' | 'none';
 					await this.plugin.saveSettings();
 				}));
 

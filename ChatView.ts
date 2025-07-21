@@ -48,7 +48,7 @@ export class ChatView extends ItemView {
 	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
-	private contextMode: 'open-notes' | 'search' | 'none' = 'open-notes';
+	private contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none' = 'open-notes';
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -103,9 +103,10 @@ export class ChatView extends ItemView {
 		const dropdown = new DropdownComponent(contextModeContainer)
 			.addOption('open-notes', 'Open Tabs')
 			.addOption('search', 'Search')
+			.addOption('last-7-days', 'Last 7 Days')
 			.addOption('none', 'None')
 			.onChange(async (value) => {
-				this.contextMode = value as 'search' | 'open-notes' | 'none';
+				this.contextMode = value as 'search' | 'open-notes' | 'last-7-days' | 'none';
 				// Save the context mode to plugin settings
 				this.plugin.settings.contextMode = this.contextMode;
 				await this.plugin.saveSettings();
@@ -278,7 +279,7 @@ export class ChatView extends ItemView {
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		let contextMode: 'search' | 'open-notes' | 'none' = this.contextMode;
+		let contextMode: 'search' | 'open-notes' | 'last-7-days' | 'none' = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
 			if (contextMode === 'open-notes') {
@@ -303,6 +304,18 @@ export class ChatView extends ItemView {
 				if (searchResults.length > 0) {
 					searchContext = this.searchService.formatSearchResults(searchResults);
 					LoggingUtility.log(`Found ${searchResults.length} relevant notes for context`);
+				}
+			} else if (contextMode === 'last-7-days') {
+				// Use notes from the last 7 days as context
+				const recentNotes = await this.searchService.getRecentNotesContext();
+				if (recentNotes.length > 0) {
+					// Apply same limits as search mode
+					const maxResults = this.plugin.settings.searchMaxResults;
+					searchResults = recentNotes.slice(0, maxResults);
+					searchContext = this.searchService.formatSearchResults(searchResults);
+					LoggingUtility.log(`Using ${searchResults.length} notes from the last 7 days as context`);
+				} else {
+					LoggingUtility.log('No notes found from the last 7 days, no context will be used');
 				}
 			} else if (contextMode === 'none') {
 				// No context - just use the user's message as-is
