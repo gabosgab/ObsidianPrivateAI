@@ -309,4 +309,66 @@ export class SearchService {
 			return [];
 		}
 	}
+
+	/**
+	 * Get notes from the last 7 days as context
+	 */
+	async getRecentNotesContext(): Promise<SearchResult[]> {
+		try {
+			const sevenDaysAgo = new Date();
+			sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+			
+			LoggingUtility.log(`Getting notes from the last 7 days (since ${sevenDaysAgo.toDateString()})`);
+
+			// Get all markdown files
+			const allFiles = this.app.vault.getMarkdownFiles();
+			const recentFiles: TFile[] = [];
+
+			// Filter files by modification time in the last 7 days
+			for (const file of allFiles) {
+				if (file.stat.mtime >= sevenDaysAgo.getTime()) {
+					recentFiles.push(file);
+				}
+			}
+
+			if (recentFiles.length === 0) {
+				LoggingUtility.log('No notes found from the last 7 days');
+				return [];
+			}
+
+			LoggingUtility.log(`Found ${recentFiles.length} notes from the last 7 days:`, recentFiles.map(f => f.path));
+
+			// Sort by modification time (most recent first)
+			recentFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
+
+			// Create search results for recent files
+			const results: SearchResult[] = [];
+			for (const file of recentFiles) {
+				try {
+					const content = await this.app.vault.read(file);
+					const metadata = this.app.metadataCache.getFileCache(file);
+					
+					// Calculate relevance based on recency (more recent = higher relevance)
+					const daysSinceModified = (Date.now() - file.stat.mtime) / (1000 * 60 * 60 * 24);
+					const relevance = Math.max(0.1, 1 - (daysSinceModified / 7)); // Scale from 1.0 (today) to 0.1 (7 days ago)
+					
+					results.push({
+						file,
+						content: content,
+						relevance: relevance,
+						title: this.getFileTitle(file, metadata),
+						path: file.path
+					});
+				} catch (error) {
+					LoggingUtility.warn(`Error reading file ${file.path}:`, error);
+				}
+			}
+
+			return results;
+
+		} catch (error) {
+			LoggingUtility.warn('Error getting recent notes context:', error);
+			return [];
+		}
+	}
 } 
