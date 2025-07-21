@@ -1,0 +1,306 @@
+import { LoggingUtility } from './LoggingUtility';
+import { App } from 'obsidian';
+
+export interface ParagraphDocument {
+	id: string; // unique id for the paragraph (e.g., "file.md#p1")
+	vector: number[];
+	metadata: {
+		filePath: string;
+		fileName: string;
+		title: string;
+		paragraphIndex: number;
+		paragraphText: string; // store the actual paragraph text for retrieval
+		fileChecksum: string; // checksum of entire file
+		lastModified: number;
+		fileSize: number;
+	};
+}
+
+interface VectorIndex {
+	version: string;
+	documents: ParagraphDocument[];
+	dimension: number;
+	lastUpdated: number;
+}
+
+export interface ParagraphSearchResult {
+	document: ParagraphDocument;
+	similarity: number;
+}
+
+export class VectorDatabase {
+	private index: VectorIndex;
+	private indexPath: string;
+	private app: App;
+
+	constructor(app: App, indexPath: string) {
+		this.app = app;
+		this.indexPath = indexPath;
+		this.index = {
+			version: '2.0', // Increment version for paragraph-based storage
+			documents: [],
+			dimension: 0, // Will be set when first document is added
+			lastUpdated: Date.now()
+		};
+	}
+
+	/**
+	 * Load the index from disk
+	 */
+	async load(): Promise<void> {
+		try {
+			const data = await this.app.vault.adapter.read(this.indexPath);
+			const loadedIndex = JSON.parse(data);
+			
+			// Check if we need to migrate from old format
+			if (loadedIndex.version === '1.0') {
+				LoggingUtility.log('Detected old vector index format, will need rebuild for paragraph support');
+				// Clear old index as structure is incompatible
+				this.index = {
+					version: '2.0',
+					documents: [],
+					dimension: 0,
+					lastUpdated: Date.now()
+				};
+			} else {
+				this.index = loadedIndex;
+			}
+			
+			LoggingUtility.log(`Loaded vector index v${this.index.version} with ${this.index.documents.length} paragraph documents`);
+		} catch (error) {
+			LoggingUtility.log('No existing vector index found, starting fresh');
+			this.index = {
+				version: '2.0',
+				documents: [],
+				dimension: 0,
+				lastUpdated: Date.now()
+			};
+		}
+	}
+
+	/**
+	 * Save the index to disk
+	 */
+	async save(): Promise<void> {
+		try {
+			const data = JSON.stringify(this.index, null, 2);
+			await this.app.vault.adapter.write(this.indexPath, data);
+			LoggingUtility.log(`Saved vector index with ${this.index.documents.length} paragraph documents`);
+		} catch (error) {
+			LoggingUtility.error('Failed to save vector index:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Add or update paragraphs for a file
+	 */
+	async upsertFileDocuments(filePath: string, paragraphDocuments: ParagraphDocument[]): Promise<void> {
+		// Remove existing documents for this file
+		await this.removeFileDocuments(filePath);
+		
+		// Add new paragraph documents
+		for (const document of paragraphDocuments) {
+			// Set dimension from first document if not set
+			if (this.index.dimension === 0 && document.vector.length > 0) {
+				this.index.dimension = document.vector.length;
+				LoggingUtility.log(`Set vector dimension to ${this.index.dimension}`);
+			}
+			
+			// Validate dimension
+			if (document.vector.length !== this.index.dimension) {
+				throw new Error(`Vector dimension mismatch. Expected ${this.index.dimension}, got ${document.vector.length}`);
+			}
+			
+			this.index.documents.push(document);
+		}
+		
+		this.index.lastUpdated = Date.now();
+		LoggingUtility.log(`Updated ${paragraphDocuments.length} paragraph documents for file: ${filePath}`);
+	}
+
+	/**
+	 * Remove all documents for a specific file
+	 */
+	async removeFileDocuments(filePath: string): Promise<void> {
+		const initialLength = this.index.documents.length;
+		this.index.documents = this.index.documents.filter(doc => doc.metadata.filePath !== filePath);
+		
+		const removedCount = initialLength - this.index.documents.length;
+		if (removedCount > 0) {
+			this.index.lastUpdated = Date.now();
+			LoggingUtility.log(`Removed ${removedCount} paragraph documents for file: ${filePath}`);
+		}
+	}
+
+	/**
+	 * Search for similar paragraphs using cosine similarity
+	 */
+	search(queryVector: number[], limit: number = 5, threshold: number = 0.5): ParagraphSearchResult[] {
+		if (this.index.documents.length === 0) {
+			return [];
+		}
+
+		// Calculate similarities
+		const similarities = this.index.documents.map(doc => ({
+			document: doc,
+			similarity: this.cosineSimilarity(queryVector, doc.vector)
+		}));
+
+		// Filter by threshold and sort by similarity
+		const results = similarities
+			.filter(item => item.similarity >= threshold)
+			.sort((a, b) => b.similarity - a.similarity)
+			.slice(0, limit);
+
+		LoggingUtility.log(`Found ${results.length} similar paragraphs`);
+		return results;
+	}
+
+	/**
+	 * Search for similar paragraphs and group by file
+	 */
+	searchGroupedByFile(queryVector: number[], maxFiles: number = 3, maxParagraphsPerFile: number = 3, threshold: number = 0.5): Map<string, ParagraphSearchResult[]> {
+		const allResults = this.search(queryVector, maxFiles * maxParagraphsPerFile * 2, threshold);
+		
+		// Group by file
+		const resultsByFile = new Map<string, ParagraphSearchResult[]>();
+		
+		for (const result of allResults) {
+			const filePath = result.document.metadata.filePath;
+			
+			if (!resultsByFile.has(filePath)) {
+				resultsByFile.set(filePath, []);
+			}
+			
+			const fileResults = resultsByFile.get(filePath)!;
+			if (fileResults.length < maxParagraphsPerFile) {
+				fileResults.push(result);
+			}
+		}
+		
+		// Keep only top files by best paragraph similarity
+		const sortedFiles = Array.from(resultsByFile.entries())
+			.sort((a, b) => b[1][0].similarity - a[1][0].similarity)
+			.slice(0, maxFiles);
+		
+		return new Map(sortedFiles);
+	}
+
+	/**
+	 * Calculate cosine similarity between two vectors
+	 */
+	private cosineSimilarity(a: number[], b: number[]): number {
+		if (a.length !== b.length) {
+			throw new Error('Vectors must have the same dimension');
+		}
+
+		let dotProduct = 0;
+		let normA = 0;
+		let normB = 0;
+
+		for (let i = 0; i < a.length; i++) {
+			dotProduct += a[i] * b[i];
+			normA += a[i] * a[i];
+			normB += b[i] * b[i];
+		}
+
+		normA = Math.sqrt(normA);
+		normB = Math.sqrt(normB);
+
+		if (normA === 0 || normB === 0) {
+			return 0;
+		}
+
+		return dotProduct / (normA * normB);
+	}
+
+	/**
+	 * Clear the entire index
+	 */
+	async clear(): Promise<void> {
+		this.index = {
+			version: '2.0',
+			documents: [],
+			dimension: 0, // Will be set when first document is added
+			lastUpdated: Date.now()
+		};
+		await this.save();
+		LoggingUtility.log('Cleared vector index');
+	}
+
+	/**
+	 * Get statistics about the index
+	 */
+	getStats(): { documentCount: number; fileCount: number; lastUpdated: Date; sizeInBytes: number } {
+		const sizeInBytes = JSON.stringify(this.index).length;
+		const uniqueFiles = new Set(this.index.documents.map(doc => doc.metadata.filePath));
+		
+		return {
+			documentCount: this.index.documents.length,
+			fileCount: uniqueFiles.size,
+			lastUpdated: new Date(this.index.lastUpdated),
+			sizeInBytes
+		};
+	}
+
+	/**
+	 * Check if a file exists in the index
+	 */
+	hasFile(filePath: string): boolean {
+		return this.index.documents.some(doc => doc.metadata.filePath === filePath);
+	}
+
+	/**
+	 * Get all documents for a specific file
+	 */
+	getFileDocuments(filePath: string): ParagraphDocument[] {
+		return this.index.documents.filter(doc => doc.metadata.filePath === filePath);
+	}
+
+	/**
+	 * Check if a file needs to be updated based on checksum
+	 */
+	fileNeedsUpdate(filePath: string, checksum: string, lastModified: number, size: number): boolean {
+		const fileDocuments = this.getFileDocuments(filePath);
+		
+		if (fileDocuments.length === 0) {
+			return true; // File doesn't exist in index
+		}
+
+		// Check if any of the key properties have changed
+		const firstDoc = fileDocuments[0];
+		return firstDoc.metadata.fileChecksum !== checksum ||
+			   firstDoc.metadata.lastModified !== lastModified ||
+			   firstDoc.metadata.fileSize !== size;
+	}
+
+	/**
+	 * Get files that need updating based on file stats
+	 */
+	getFilesNeedingUpdate(fileStats: Map<string, { checksum: string; lastModified: number; size: number }>): string[] {
+		const needsUpdate: string[] = [];
+		
+		for (const [filePath, stats] of fileStats) {
+			if (this.fileNeedsUpdate(filePath, stats.checksum, stats.lastModified, stats.size)) {
+				needsUpdate.push(filePath);
+			}
+		}
+		
+		return needsUpdate;
+	}
+
+	/**
+	 * Remove documents for files that no longer exist in the file system
+	 */
+	async removeObsoleteDocuments(existingFiles: Set<string>): Promise<void> {
+		const before = this.index.documents.length;
+		this.index.documents = this.index.documents.filter(doc => existingFiles.has(doc.metadata.filePath));
+		const after = this.index.documents.length;
+		
+		if (before !== after) {
+			this.index.lastUpdated = Date.now();
+			LoggingUtility.log(`Removed ${before - after} obsolete paragraph documents`);
+		}
+	}
+} 
