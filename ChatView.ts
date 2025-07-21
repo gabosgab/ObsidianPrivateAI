@@ -2,7 +2,6 @@ import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent } 
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
 import { LoggingUtility } from './LoggingUtility';
-import { SettingsManager } from './SettingsManager';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -35,6 +34,13 @@ interface DropdownComponentWithPrivateAPI extends DropdownComponent {
 	};
 }
 
+// Forward declaration of the plugin class
+declare class LocalLLMPlugin {
+	settings: any;
+	ragService: any;
+	saveSettings(): Promise<void>;
+}
+
 export class ChatView extends ItemView {
 	private messages: ChatMessage[] = [];
 	private messageContainer: HTMLElement;
@@ -47,16 +53,18 @@ export class ChatView extends ItemView {
 	private searchService: SearchService;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
-	private contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none' = 'open-notes';
+	private contextMode: 'open-notes' | 'search' | 'rag' | 'none' = 'open-notes';
 	private contextModeDropdown: DropdownComponent;
+	private plugin: LocalLLMPlugin;
 
-	constructor(leaf: WorkspaceLeaf) {
+	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
+		this.plugin = plugin;
 		this.searchService = new SearchService(this.app);
 		// Initialize with plugin settings
 		this.updateLLMServiceFromSettings();
 		// Initialize context mode from plugin settings
-		this.contextMode = SettingsManager.getInstance().getSetting('contextMode');
+		this.contextMode = this.plugin.settings.contextMode;
 	}
 
 	getViewType(): string {
@@ -102,12 +110,13 @@ export class ChatView extends ItemView {
 		this.contextModeDropdown = new DropdownComponent(contextModeContainer)
 			.addOption('open-notes', 'Open tabs')
 			.addOption('search', 'Search')
-			.addOption('last-7-days', 'Last 7 days')
+			.addOption('rag', 'RAG')
 			.addOption('none', 'None')
 			.onChange(async (value) => {
-				this.contextMode = value as 'search' | 'open-notes' | 'last-7-days' | 'none';
+				this.contextMode = value as 'search' | 'open-notes' | 'rag' | 'none';
 				// Save the context mode to plugin settings
-				SettingsManager.getInstance().setSetting('contextMode', this.contextMode);
+				this.plugin.settings.contextMode = this.contextMode;
+				await this.plugin.saveSettings();
 			});
 		
 		// Set initial value based on plugin settings
@@ -197,8 +206,7 @@ export class ChatView extends ItemView {
 
 	// Method to update LLM service from plugin settings
 	updateLLMServiceFromSettings() {
-		const settingsManager = SettingsManager.getInstance();
-		const settings = settingsManager.getSettings();
+		const settings = this.plugin.settings;
 		LoggingUtility.log('Updating LLM service with settings:', settings);
 		this.llmService = createLLMService({
 			apiEndpoint: settings.apiEndpoint,
@@ -210,7 +218,7 @@ export class ChatView extends ItemView {
 
 	// Method to update context mode from plugin settings
 	updateContextModeFromSettings() {
-		this.contextMode = SettingsManager.getInstance().getSetting('contextMode');
+		this.contextMode = this.plugin.settings.contextMode;
 		// Also update the dropdown if it exists
 		if (this.contextModeDropdown) {
 			this.contextModeDropdown.setValue(this.contextMode);
@@ -263,7 +271,7 @@ export class ChatView extends ItemView {
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		let contextMode: 'search' | 'open-notes' | 'last-7-days' | 'none' = this.contextMode;
+		let contextMode: 'search' | 'open-notes' | 'rag' | 'none' = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
 			if (contextMode === 'open-notes') {
@@ -278,30 +286,55 @@ export class ChatView extends ItemView {
 				}
 			} else if (contextMode === 'search') {
 				// Search entire vault
-				const settingsManager = SettingsManager.getInstance();
-				const maxContextTokens = Math.floor(settingsManager.getSetting('maxTokens') * (settingsManager.getSetting('searchContextPercentage') / 100));
+				const settings = this.plugin.settings;
+				const maxContextTokens = Math.floor(settings.maxTokens * (settings.searchContextPercentage / 100));
 				searchResults = await this.searchService.searchVault(content, {
-					maxResults: settingsManager.getSetting('searchMaxResults'),
+					maxResults: settings.searchMaxResults,
 					maxTokens: maxContextTokens,
-					threshold: settingsManager.getSetting('searchThreshold')
+					threshold: settings.searchThreshold
 				});
 				
 				if (searchResults.length > 0) {
 					searchContext = this.searchService.formatSearchResults(searchResults);
 					LoggingUtility.log(`Found ${searchResults.length} relevant notes for context`);
 				}
-			} else if (contextMode === 'last-7-days') {
-				// Use notes from the last 7 days as context
-				const settingsManager = SettingsManager.getInstance();
-				const maxResults = settingsManager.getSetting('searchMaxResults');
-				const recentNotes = await this.searchService.getRecentNotesContext();
-				if (recentNotes.length > 0) {
-					// Apply same limits as search mode
-					searchResults = recentNotes.slice(0, maxResults);
-					searchContext = this.searchService.formatSearchResults(searchResults);
-					LoggingUtility.log(`Using ${searchResults.length} notes from the last 7 days as context`);
+			} else if (contextMode === 'rag') {
+				// Use RAG search
+				if (this.plugin.ragService.isIndexEmpty()) {
+					LoggingUtility.log('RAG index is empty, falling back to regular search');
+					// Fall back to regular search if RAG index is empty
+					const maxContextTokens = Math.floor(this.plugin.settings.maxTokens * (this.plugin.settings.searchContextPercentage / 100));
+					searchResults = await this.searchService.searchVault(content, {
+						maxResults: this.plugin.settings.ragMaxResults,
+						maxTokens: maxContextTokens,
+						threshold: this.plugin.settings.ragThreshold
+					});
+					
+					if (searchResults.length > 0) {
+						searchContext = this.searchService.formatSearchResults(searchResults);
+						LoggingUtility.log(`Found ${searchResults.length} relevant notes using fallback search`);
+					}
 				} else {
-					LoggingUtility.log('No notes found from the last 7 days, no context will be used');
+					// Use RAG search
+					const ragResults = await this.plugin.ragService.search(
+						content,
+						this.plugin.settings.ragMaxResults,
+						this.plugin.settings.ragThreshold
+					);
+					
+					if (ragResults.length > 0) {
+						// Convert RAG results to SearchResult format
+						searchResults = ragResults.map((result: any) => ({
+							file: result.file,
+							content: result.content,
+							relevance: result.similarity,
+							title: result.title,
+							path: result.path
+						}));
+						
+						searchContext = this.plugin.ragService.formatSearchResults(ragResults);
+						LoggingUtility.log(`Found ${ragResults.length} relevant notes using RAG`);
+					}
 				}
 			} else if (contextMode === 'none') {
 				// No context - just use the user's message as-is

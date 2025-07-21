@@ -12,9 +12,16 @@ export interface LocalLLMSettings {
 	searchContextPercentage: number;
 	searchThreshold: number;
 	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none';
+	contextMode: 'open-notes' | 'search' | 'rag' | 'none';
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
+	// RAG settings
+	enableRAG: boolean;
+	ragThreshold: number;
+	ragMaxResults: number;
+	// Embedding settings
+	embeddingEndpoint: string;
+	embeddingModel: string;
 }
 
 export const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -30,7 +37,14 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Default context mode
 	contextMode: 'open-notes',
 	// Default developer logging setting
-	enableDeveloperLogging: false
+	enableDeveloperLogging: false,
+	// RAG defaults
+	enableRAG: false,
+	ragThreshold: 0.5,
+	ragMaxResults: 5,
+	// Embedding defaults
+	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
+	embeddingModel: 'text-embedding-ada-002'
 };
 
 export class SettingsManager {

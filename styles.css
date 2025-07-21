@@ -758,3 +758,144 @@
 .local-llm-selectable-content {
 	user-select: text;
 } 
+
+/* RAG Progress Floating Dialog Styles */
+.rag-progress-floating-dialog {
+	position: fixed !important;
+	z-index: 1000;
+	font-family: var(--font-interface);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+	backdrop-filter: blur(8px);
+	transition: all 0.2s ease;
+}
+
+.rag-progress-floating-dialog:hover {
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
+.rag-progress-title {
+	font-size: 16px;
+	font-weight: 600;
+	margin-bottom: 12px;
+	cursor: move;
+	user-select: none;
+	color: var(--text-normal);
+	padding-right: 30px; /* Space for minimize button */
+	position: relative;
+}
+
+.rag-progress-minimize {
+	position: absolute;
+	right: 0;
+	top: 0;
+	cursor: pointer;
+	width: 20px;
+	height: 20px;
+	text-align: center;
+	line-height: 18px;
+	border-radius: 3px;
+	font-weight: bold;
+	color: var(--text-muted);
+	transition: background-color 0.15s ease;
+}
+
+.rag-progress-minimize:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.rag-progress-message {
+	margin-bottom: 12px;
+	font-size: 14px;
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+.rag-progress-container {
+	margin-bottom: 16px;
+}
+
+.rag-progress-container .progress-bar {
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	height: 8px;
+}
+
+.rag-progress-container .progress-bar-line {
+	background: var(--interactive-accent);
+	height: 100%;
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.rag-progress-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.rag-progress-buttons button {
+	padding: 6px 12px;
+	border-radius: 4px;
+	border: none;
+	font-size: 13px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.rag-progress-buttons button.mod-warning {
+	background: var(--color-orange);
+	color: white;
+}
+
+.rag-progress-buttons button.mod-warning:hover {
+	background: var(--color-orange-hover);
+}
+
+.rag-progress-buttons button.mod-cta {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.rag-progress-buttons button.mod-cta:hover {
+	background: var(--interactive-accent-hover);
+}
+
+/* Animation for smooth entry */
+.rag-progress-floating-dialog {
+	animation: ragDialogSlideIn 0.3s ease-out;
+}
+
+@keyframes ragDialogSlideIn {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+/* Minimize state animation */
+.rag-progress-floating-dialog.minimized {
+	transition: width 0.2s ease, height 0.2s ease;
+}
+
+/* Make sure the dialog stays above everything */
+.rag-progress-floating-dialog {
+	z-index: 1001;
+}
+
+/* Dark mode adjustments */
+.theme-dark .rag-progress-floating-dialog {
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.theme-dark .rag-progress-floating-dialog:hover {
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+} 
