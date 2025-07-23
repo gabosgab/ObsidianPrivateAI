@@ -9,6 +9,12 @@ Effortlessly chat with your notes using a privacy first LLM.  Private by design,
 
 ![Private AI Example Use Case](img/ObsidianExample.gif)
 
+## Getting Started + Setup
+
+⚠️ *We're pending review by the Obsidian plugin review team, in the meantime, you can use our beta test quickstart guide to install and provide feedback.*
+
+📃 [Beta Test Quickstart Guide](GettingStarted.md)
+
 ## Features
 
 - **Easy Setup**: Easy setup and model swapping with LM Studio
@@ -28,12 +34,6 @@ Effortlessly chat with your notes using a privacy first LLM.  Private by design,
 - "What did frank talk about at our meeting on Obsidian plugins?"
 - "What did I write about machine learning?"
 - "What are my thoughts on productivity systems?"
-
-## Getting Started + Setup
-
-⚠️ *We're pending review by the Obsidian plugin review team, in the meantime, you can use our beta test quickstart guide to install and provide feedback.*
-
-📃 [Beta Test Quickstart Guide](GettingStarted.md)
 
 ## Development
 
