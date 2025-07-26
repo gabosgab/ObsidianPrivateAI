@@ -83,12 +83,55 @@ export class VectorDatabase {
 	 */
 	async save(): Promise<void> {
 		try {
+			// Ensure the directory exists before writing the file
+			const pathParts = this.indexPath.split('/');
+			const fileName = pathParts.pop(); // Remove filename
+			const directoryPath = pathParts.join('/');
+			
+			// Create directory if it doesn't exist
+			if (directoryPath && directoryPath !== '') {
+				try {
+					const directoryExists = await this.app.vault.adapter.exists(directoryPath);
+					if (!directoryExists) {
+						await this.app.vault.createFolder(directoryPath);
+						LoggingUtility.log(`Created directory: ${directoryPath}`);
+					}
+				} catch (directoryError) {
+					// If createFolder fails, try creating parent directories recursively
+					LoggingUtility.log(`Directory creation failed, attempting recursive creation: ${directoryPath}`);
+					await this.createDirectoryRecursively(directoryPath);
+				}
+			}
+			
 			const data = JSON.stringify(this.index, null, 2);
 			await this.app.vault.adapter.write(this.indexPath, data);
 			LoggingUtility.log(`Saved vector index with ${this.index.documents.length} paragraph documents`);
 		} catch (error) {
 			LoggingUtility.error('Failed to save vector index:', error);
 			throw error;
+		}
+	}
+
+	/**
+	 * Create directory recursively if parent directories don't exist
+	 */
+	private async createDirectoryRecursively(directoryPath: string): Promise<void> {
+		const pathParts = directoryPath.split('/').filter(part => part !== '');
+		let currentPath = '';
+		
+		for (const part of pathParts) {
+			currentPath += (currentPath ? '/' : '') + part;
+			
+			try {
+				const exists = await this.app.vault.adapter.exists(currentPath);
+				if (!exists) {
+					await this.app.vault.createFolder(currentPath);
+					LoggingUtility.log(`Created directory: ${currentPath}`);
+				}
+			} catch (error) {
+				// Continue trying even if individual directory creation fails
+				LoggingUtility.warn(`Could not create directory ${currentPath}:`, error);
+			}
 		}
 	}
 
