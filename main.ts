@@ -29,6 +29,10 @@ interface LocalLLMSettings {
 	// Embedding settings
 	embeddingEndpoint: string;
 	embeddingModel: string;
+	// RAG Auto-maintenance settings
+	ragAutoMaintenance: boolean;
+	ragBackgroundIndexing: boolean;
+	ragSilentMode: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -51,7 +55,11 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	ragMaxResults: 5,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
-	embeddingModel: 'text-embedding-ada-002'
+	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
+	// RAG Auto-maintenance settings
+	ragAutoMaintenance: true,
+	ragBackgroundIndexing: true,
+	ragSilentMode: false
 };
 
 export default class LocalLLMPlugin extends Plugin {
@@ -70,6 +78,10 @@ export default class LocalLLMPlugin extends Plugin {
 		this.ragService = new RAGService(this.app, {
 			endpoint: this.settings.embeddingEndpoint,
 			model: this.settings.embeddingModel
+		}, {
+			autoMaintenance: this.settings.ragAutoMaintenance,
+			backgroundIndexing: this.settings.ragBackgroundIndexing,
+			silentMode: this.settings.ragSilentMode
 		});
 		await this.ragService.initialize();
 		
@@ -471,6 +483,49 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.embeddingModel = value;
 					await this.plugin.saveSettings();
+				}));
+
+		// Auto-maintenance settings
+		new Setting(containerEl)
+			.setName('Enable automatic maintenance')
+			.setDesc('Automatically detect fresh installs and maintain the RAG database on startup')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.ragAutoMaintenance)
+				.onChange(async (value) => {
+					this.plugin.settings.ragAutoMaintenance = value;
+					await this.plugin.saveSettings();
+					// Update the RAG service initialization options
+					this.plugin.ragService.updateInitializationOptions({
+						autoMaintenance: value
+					});
+				}));
+
+		new Setting(containerEl)
+			.setName('Background indexing')
+			.setDesc('Run automatic indexing in the background to avoid blocking Obsidian startup')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.ragBackgroundIndexing)
+				.onChange(async (value) => {
+					this.plugin.settings.ragBackgroundIndexing = value;
+					await this.plugin.saveSettings();
+					// Update the RAG service initialization options
+					this.plugin.ragService.updateInitializationOptions({
+						backgroundIndexing: value
+					});
+				}));
+
+		new Setting(containerEl)
+			.setName('Silent auto-maintenance')
+			.setDesc('Hide notices and progress updates during automatic maintenance operations')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.ragSilentMode)
+				.onChange(async (value) => {
+					this.plugin.settings.ragSilentMode = value;
+					await this.plugin.saveSettings();
+					// Update the RAG service initialization options
+					this.plugin.ragService.updateInitializationOptions({
+						silentMode: value
+					});
 				}));
 
 		// Test embedding connection button

@@ -172,5 +172,5 @@ temp/
 .yarn/install-state.gz
 .pnp.*
 
-
 embeddings.json
+vector-index/embeddings.json

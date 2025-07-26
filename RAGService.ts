@@ -24,6 +24,17 @@ interface ChunkContent {
 	index: number;
 }
 
+export interface RAGInitializationOptions {
+	autoMaintenance?: boolean; // Whether to automatically maintain the index
+	backgroundIndexing?: boolean; // Whether to run indexing in background
+	silentMode?: boolean; // Whether to suppress notices during auto-maintenance
+}
+
+export enum MaintenanceOperation {
+	REBUILD = 'rebuild',
+	UPDATE = 'update'
+}
+
 export class RAGService {
 	private app: App;
 	private vectorDB: VectorDatabase;
@@ -34,25 +45,134 @@ export class RAGService {
 	private isIndexing: boolean = false;
 	private indexingAbortController?: AbortController;
 	private progressCallback?: ProgressCallback;
+	private initOptions: RAGInitializationOptions;
 	
-	constructor(app: App, embeddingConfig: EmbeddingConfig) {
+	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
 		const indexPath = this.app.vault.configDir + '/plugins/ObsidianPrivateAI/vector-index/embeddings.json';
 		this.vectorDB = new VectorDatabase(this.app, indexPath);
 		this.embeddingService = new EmbeddingService(embeddingConfig);
+		this.initOptions = {
+			autoMaintenance: true,
+			backgroundIndexing: true,
+			silentMode: false,
+			...initOptions
+		};
 	}
 
 	/**
-	 * Initialize the RAG service
+	 * Initialize the RAG service with automatic maintenance
 	 */
 	async initialize(): Promise<void> {
 		try {
 			await this.vectorDB.load();
 			const stats = this.vectorDB.getStats();
 			LoggingUtility.log(`RAG Service initialized with ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
+			
+			// Automatic maintenance if enabled
+			if (this.initOptions.autoMaintenance) {
+				const isFreshInstall = await this.detectFreshInstall();
+				
+				if (isFreshInstall) {
+					LoggingUtility.log('Fresh install detected, starting automatic index rebuild...');
+					if (!this.initOptions.silentMode) {
+						new Notice('Fresh install detected. Building RAG database for the first time...');
+					}
+					
+					if (this.initOptions.backgroundIndexing) {
+						// Run in background without blocking initialization
+						this.runBackgroundMaintenance(MaintenanceOperation.REBUILD);
+					} else {
+						// Run synchronously
+						await this.forceRebuildIndex(this.createAutoMaintenanceProgressCallback());
+					}
+				} else {
+					LoggingUtility.log('Existing installation detected, running smart update...');
+					if (!this.initOptions.silentMode) {
+						new Notice('Checking for file changes and updating RAG database...');
+					}
+					
+					if (this.initOptions.backgroundIndexing) {
+						// Run in background without blocking initialization
+						this.runBackgroundMaintenance(MaintenanceOperation.UPDATE);
+					} else {
+						// Run synchronously
+						await this.buildIndex(this.createAutoMaintenanceProgressCallback());
+					}
+				}
+			}
 		} catch (error) {
 			LoggingUtility.error('Failed to initialize RAG service:', error);
 		}
+	}
+
+	/**
+	 * Detect if this is a fresh install
+	 */
+	private async detectFreshInstall(): Promise<boolean> {
+		try {
+			const stats = this.vectorDB.getStats();
+			
+			// Consider it fresh if:
+			// 1. No documents exist
+			// 2. Very few documents compared to markdown files (less than 10% coverage)
+			const markdownFiles = this.app.vault.getMarkdownFiles();
+			const coverageRatio = markdownFiles.length > 0 ? stats.fileCount / markdownFiles.length : 0;
+			
+			const isFresh = stats.documentCount === 0 || coverageRatio < 0.1;
+			
+			LoggingUtility.log(`Fresh install detection: ${stats.documentCount} documents, ${stats.fileCount} indexed files, ${markdownFiles.length} total markdown files, coverage: ${(coverageRatio * 100).toFixed(1)}%`);
+			
+			return isFresh;
+		} catch (error) {
+			LoggingUtility.warn('Error detecting fresh install, assuming fresh:', error);
+			return true; // Err on the side of rebuilding
+		}
+	}
+
+	/**
+	 * Run maintenance operations in the background
+	 */
+	private async runBackgroundMaintenance(operation: MaintenanceOperation): Promise<void> {
+		// Use setTimeout to run in background without blocking
+		setTimeout(async () => {
+			try {
+				if (operation === MaintenanceOperation.REBUILD) {
+					await this.forceRebuildIndex(this.createAutoMaintenanceProgressCallback());
+				} else {
+					await this.buildIndex(this.createAutoMaintenanceProgressCallback());
+				}
+			} catch (error) {
+				LoggingUtility.error(`Background maintenance (${operation}) failed:`, error);
+				if (!this.initOptions.silentMode) {
+					new Notice(`RAG database ${operation} failed: ${error.message}`);
+				}
+			}
+		}, 100); // Small delay to ensure UI is ready
+	}
+
+	/**
+	 * Create a progress callback for auto-maintenance operations
+	 */
+	private createAutoMaintenanceProgressCallback(): ProgressCallback | undefined {
+		if (this.initOptions.silentMode) {
+			return undefined; // No progress updates in silent mode
+		}
+		
+		return (current: number, total: number, message: string) => {
+			// Log progress but don't show UI progress in auto-maintenance
+			if (current % 10 === 0 || current === total) {
+				LoggingUtility.log(`Auto-maintenance progress: ${current}/${total} - ${message}`);
+			}
+		};
+	}
+
+	/**
+	 * Update initialization options
+	 */
+	updateInitializationOptions(options: Partial<RAGInitializationOptions>): void {
+		this.initOptions = { ...this.initOptions, ...options };
+		LoggingUtility.log('Updated RAG initialization options:', this.initOptions);
 	}
 
 	/**

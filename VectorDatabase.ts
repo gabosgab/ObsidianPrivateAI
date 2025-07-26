@@ -137,10 +137,12 @@ export class VectorDatabase {
 	 * Search for similar paragraphs using cosine similarity
 	 */
 	search(queryVector: number[], limit: number = 5, threshold: number = 0.5): ParagraphSearchResult[] {
+		LoggingUtility.log(`Searching for ${limit} similar paragraphs with threshold ${threshold}`);
 		if (this.index.documents.length === 0) {
 			return [];
 		}
 
+		const startTime = Date.now();
 		// Calculate similarities
 		const similarities = this.index.documents.map(doc => ({
 			document: doc,
@@ -153,7 +155,7 @@ export class VectorDatabase {
 			.sort((a, b) => b.similarity - a.similarity)
 			.slice(0, limit);
 
-		LoggingUtility.log(`Found ${results.length} similar paragraphs`);
+		LoggingUtility.log(`Found ${results.length} similar paragraphs in ${Date.now() - startTime}ms`);
 		return results;
 	}
 

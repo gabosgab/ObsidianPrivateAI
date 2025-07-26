@@ -273,7 +273,7 @@ export class RAGProgressDialog {
 			if (this.isVisible) {
 				this.close();
 			}
-		}, 5000);
+		}, 1000);
 	}
 
 	/**
