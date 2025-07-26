@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent } 
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
 import { LoggingUtility } from './LoggingUtility';
+import LocalLLMPlugin, { ContextMode } from './main';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -34,13 +35,6 @@ interface DropdownComponentWithPrivateAPI extends DropdownComponent {
 	};
 }
 
-// Forward declaration of the plugin class
-declare class LocalLLMPlugin {
-	settings: any;
-	ragService: any;
-	saveSettings(): Promise<void>;
-}
-
 export class ChatView extends ItemView {
 	private messages: ChatMessage[] = [];
 	private messageContainer: HTMLElement;
@@ -49,18 +43,20 @@ export class ChatView extends ItemView {
 	private sendButton: HTMLButtonElement;
 	private stopButton: HTMLButtonElement;
 	private searchIndicator: HTMLElement;
+	private ragStatusArea: HTMLElement;
+	private ragStatusContent: HTMLElement;
 	private llmService: LLMService;
 	private searchService: SearchService;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
-	private contextMode: 'open-notes' | 'search' | 'rag' | 'none' = 'open-notes';
-	private contextModeDropdown: DropdownComponent;
+	private contextMode: ContextMode = ContextMode.OPEN_NOTES;
 	private plugin: LocalLLMPlugin;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		this.searchService = new SearchService(this.app);
+		// Pass RAG service to SearchService for enhanced search capabilities
+		this.searchService = new SearchService(this.app, plugin.ragService);
 		// Initialize with plugin settings
 		this.updateLLMServiceFromSettings();
 		// Initialize context mode from plugin settings
@@ -107,20 +103,21 @@ export class ChatView extends ItemView {
 			text: 'Context:'
 		});
 		
-		this.contextModeDropdown = new DropdownComponent(contextModeContainer)
-			.addOption('open-notes', 'Open tabs')
-			.addOption('search', 'Search')
-			.addOption('rag', 'RAG')
-			.addOption('none', 'None')
+		const dropdown = new DropdownComponent(contextModeContainer)
+			.addOption(ContextMode.OPEN_NOTES, 'Open Tabs')
+			.addOption(ContextMode.SEARCH, 'All Notes')
+			.addOption(ContextMode.NONE, 'None')
 			.onChange(async (value) => {
-				this.contextMode = value as 'search' | 'open-notes' | 'rag' | 'none';
+				this.contextMode = value as ContextMode;
 				// Save the context mode to plugin settings
 				this.plugin.settings.contextMode = this.contextMode;
 				await this.plugin.saveSettings();
+				// Update RAG status display
+				this.updateRAGStatus();
 			});
 		
 		// Set initial value based on plugin settings
-		this.contextModeDropdown.setValue(this.contextMode);
+		dropdown.setValue(this.contextMode);
 		
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
@@ -175,6 +172,15 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-stop-button'
 		});
 
+		// Create RAG status area below input container
+		this.ragStatusArea = chatContainer.createEl('div', {
+			cls: 'local-llm-rag-status-area local-llm-rag-status-hidden'
+		});
+
+		this.ragStatusContent = this.ragStatusArea.createEl('div', {
+			cls: 'local-llm-rag-status-content'
+		});
+
 		// Add event listeners
 		this.inputElement.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && !e.shiftKey) {
@@ -198,6 +204,9 @@ export class ChatView extends ItemView {
 			content: await ChatView.getWelcomeMessage(this.llmService),
 			timestamp: new Date()
 		});
+
+		// Check and display initial RAG status
+		this.updateRAGStatus();
 	}
 
 	async onClose() {
@@ -216,17 +225,22 @@ export class ChatView extends ItemView {
 		});
 	}
 
-	// Method to update context mode from plugin settings
-	updateContextModeFromSettings() {
+	/**
+	 * Update context mode from settings
+	 */
+	updateContextModeFromSettings(): void {
 		this.contextMode = this.plugin.settings.contextMode;
-		// Also update the dropdown if it exists
-		if (this.contextModeDropdown) {
-			this.contextModeDropdown.setValue(this.contextMode);
+		// Update dropdown to reflect new value
+		const dropdown = this.containerEl.querySelector('.local-llm-context-mode-container select') as HTMLSelectElement;
+		if (dropdown) {
+			dropdown.value = this.contextMode;
 		}
+		// Update RAG status display
+		this.updateRAGStatus();
 	}
 
 	updateLLMService(config: LLMConfig) {
-		LoggingUtility.log('Updating LLM service with config:', config);
+		LoggingUtility.log('Updating wLLM service with config:', config);
 		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
 			maxTokens: config.maxTokens,
@@ -271,10 +285,10 @@ export class ChatView extends ItemView {
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
 		
-		let contextMode: 'search' | 'open-notes' | 'rag' | 'none' = this.contextMode;
+		let contextMode: ContextMode = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
-			if (contextMode === 'open-notes') {
+			if (contextMode === ContextMode.OPEN_NOTES) {
 				// Use open tabs as context
 				const openTabs = await this.searchService.getCurrentNoteContext();
 				if (openTabs.length > 0) {
@@ -284,59 +298,20 @@ export class ChatView extends ItemView {
 				} else {
 					LoggingUtility.log('No open tabs found, no context will be used');
 				}
-			} else if (contextMode === 'search') {
-				// Search entire vault
-				const settings = this.plugin.settings;
-				const maxContextTokens = Math.floor(settings.maxTokens * (settings.searchContextPercentage / 100));
+			} else if (contextMode === ContextMode.SEARCH) {
+				// Search entire vault using RAG (with keyword fallback)
+				const maxContextTokens = Math.floor(this.plugin.settings.maxTokens * (this.plugin.settings.searchContextPercentage / 100));
 				searchResults = await this.searchService.searchVault(content, {
-					maxResults: settings.searchMaxResults,
+					maxResults: this.plugin.settings.ragMaxResults,
 					maxTokens: maxContextTokens,
-					threshold: settings.searchThreshold
+					threshold: this.plugin.settings.ragThreshold
 				});
 				
 				if (searchResults.length > 0) {
 					searchContext = this.searchService.formatSearchResults(searchResults);
-					LoggingUtility.log(`Found ${searchResults.length} relevant notes for context`);
+					LoggingUtility.log(`Found ${searchResults.length} relevant notes using enhanced search`);
 				}
-			} else if (contextMode === 'rag') {
-				// Use RAG search
-				if (this.plugin.ragService.isIndexEmpty()) {
-					LoggingUtility.log('RAG index is empty, falling back to regular search');
-					// Fall back to regular search if RAG index is empty
-					const maxContextTokens = Math.floor(this.plugin.settings.maxTokens * (this.plugin.settings.searchContextPercentage / 100));
-					searchResults = await this.searchService.searchVault(content, {
-						maxResults: this.plugin.settings.ragMaxResults,
-						maxTokens: maxContextTokens,
-						threshold: this.plugin.settings.ragThreshold
-					});
-					
-					if (searchResults.length > 0) {
-						searchContext = this.searchService.formatSearchResults(searchResults);
-						LoggingUtility.log(`Found ${searchResults.length} relevant notes using fallback search`);
-					}
-				} else {
-					// Use RAG search
-					const ragResults = await this.plugin.ragService.search(
-						content,
-						this.plugin.settings.ragMaxResults,
-						this.plugin.settings.ragThreshold
-					);
-					
-					if (ragResults.length > 0) {
-						// Convert RAG results to SearchResult format
-						searchResults = ragResults.map((result: any) => ({
-							file: result.file,
-							content: result.content,
-							relevance: result.similarity,
-							title: result.title,
-							path: result.path
-						}));
-						
-						searchContext = this.plugin.ragService.formatSearchResults(ragResults);
-						LoggingUtility.log(`Found ${ragResults.length} relevant notes using RAG`);
-					}
-				}
-			} else if (contextMode === 'none') {
+			} else if (contextMode === ContextMode.NONE) {
 				// No context - just use the user's message as-is
 				LoggingUtility.log('No context mode selected - using message without additional context');
 			}
@@ -800,5 +775,81 @@ It looks like your local LLM server isn't running yet. Here's how to get started
 
 Once your server is running, click the test connection button below.`;
 		}
+	}
+
+	/**
+	 * Update the RAG status area based on current state
+	 */
+	private updateRAGStatus(): void {
+		// Check if currently indexing
+		if (this.plugin.ragService && this.plugin.ragService.isCurrentlyIndexing) {
+			// Will be updated by progress callbacks, don't show stats
+			return;
+		}
+
+		// Show database stats if context mode is "All Notes"
+		if (this.contextMode === ContextMode.SEARCH) {
+			const stats = this.plugin.ragService.getStats();
+			this.showRAGStats(stats.documentCount, stats.fileCount);
+		} else {
+			this.hideRAGStatus();
+		}
+	}
+
+	/**
+	 * Show RAG database statistics
+	 */
+	private showRAGStats(documentCount: number, fileCount: number): void {
+		this.ragStatusContent.innerHTML = `
+			<div class="local-llm-rag-stats">
+				<span class="local-llm-rag-stats-icon">📚</span>
+				<span class="local-llm-rag-stats-text">RAG Database: ${documentCount.toLocaleString()} paragraphs from ${fileCount.toLocaleString()} files available for context</span>
+			</div>
+		`;
+		this.ragStatusArea.removeClass('local-llm-rag-status-hidden');
+		this.ragStatusArea.addClass('local-llm-rag-status-visible');
+	}
+
+	/**
+	 * Show RAG indexing progress
+	 */
+	showRAGProgress(current: number, total: number, message: string): void {
+		const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+		
+		this.ragStatusContent.innerHTML = `
+			<div class="local-llm-rag-progress">
+				<div class="local-llm-rag-progress-header">
+					<span class="local-llm-rag-progress-icon">⚡</span>
+					<span class="local-llm-rag-progress-text">Building RAG Database</span>
+				</div>
+				<div class="local-llm-rag-progress-details">
+					<div class="local-llm-rag-progress-message">${message} (${current}/${total})</div>
+					<div class="local-llm-rag-progress-bar-container">
+						<div class="local-llm-rag-progress-bar" style="width: ${percentage}%"></div>
+					</div>
+					<div class="local-llm-rag-progress-percentage">${percentage}%</div>
+				</div>
+			</div>
+		`;
+		this.ragStatusArea.removeClass('local-llm-rag-status-hidden');
+		this.ragStatusArea.addClass('local-llm-rag-status-visible');
+	}
+
+	/**
+	 * Hide RAG status area
+	 */
+	private hideRAGStatus(): void {
+		this.ragStatusArea.removeClass('local-llm-rag-status-visible');
+		this.ragStatusArea.addClass('local-llm-rag-status-hidden');
+	}
+
+	/**
+	 * Called when RAG indexing completes
+	 */
+	onRAGIndexingComplete(): void {
+		// Update stats display after a brief delay
+		setTimeout(() => {
+			this.updateRAGStatus();
+		}, 1000);
 	}
 } 

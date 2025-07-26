@@ -28,6 +28,8 @@ export interface RAGInitializationOptions {
 	autoMaintenance?: boolean; // Whether to automatically maintain the index
 	backgroundIndexing?: boolean; // Whether to run indexing in background
 	silentMode?: boolean; // Whether to suppress notices during auto-maintenance
+	progressCallback?: (current: number, total: number, message: string) => void; // Progress updates
+	completionCallback?: () => void; // Called when indexing completes
 }
 
 export enum MaintenanceOperation {
@@ -42,10 +44,16 @@ export class RAGService {
 	private fileChangeRef?: EventRef;
 	private fileRenameRef?: EventRef;
 	private fileDeleteRef?: EventRef;
+	private workspaceChangeRef?: EventRef;
 	private isIndexing: boolean = false;
 	private indexingAbortController?: AbortController;
 	private progressCallback?: ProgressCallback;
 	private initOptions: RAGInitializationOptions;
+	private fileUpdateQueue: Map<string, NodeJS.Timeout> = new Map();
+	private isProcessingFileUpdates: boolean = false;
+	private pendingActiveFileUpdates: Set<string> = new Set();
+	private activeFileCheckInterval?: NodeJS.Timeout;
+	private lastActiveFilePath: string | null = null;
 	
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
@@ -58,6 +66,13 @@ export class RAGService {
 			silentMode: false,
 			...initOptions
 		};
+	}
+
+	/**
+	 * Get indexing status
+	 */
+	get isCurrentlyIndexing(): boolean {
+		return this.isIndexing;
 	}
 
 	/**
@@ -137,10 +152,17 @@ export class RAGService {
 		// Use setTimeout to run in background without blocking
 		setTimeout(async () => {
 			try {
+				const progressCallback = this.createAutoMaintenanceProgressCallback();
+				
 				if (operation === MaintenanceOperation.REBUILD) {
-					await this.forceRebuildIndex(this.createAutoMaintenanceProgressCallback());
+					await this.forceRebuildIndex(progressCallback);
 				} else {
-					await this.buildIndex(this.createAutoMaintenanceProgressCallback());
+					await this.buildIndex(progressCallback);
+				}
+				
+				// Notify completion
+				if (this.initOptions.completionCallback) {
+					this.initOptions.completionCallback();
 				}
 			} catch (error) {
 				LoggingUtility.error(`Background maintenance (${operation}) failed:`, error);
@@ -155,13 +177,14 @@ export class RAGService {
 	 * Create a progress callback for auto-maintenance operations
 	 */
 	private createAutoMaintenanceProgressCallback(): ProgressCallback | undefined {
-		if (this.initOptions.silentMode) {
-			return undefined; // No progress updates in silent mode
-		}
-		
 		return (current: number, total: number, message: string) => {
-			// Log progress but don't show UI progress in auto-maintenance
-			if (current % 10 === 0 || current === total) {
+			// Call the initialization progress callback if provided
+			if (this.initOptions.progressCallback) {
+				this.initOptions.progressCallback(current, total, message);
+			}
+			
+			// Log progress but don't show UI progress in silent mode
+			if (!this.initOptions.silentMode && (current % 10 === 0 || current === total)) {
 				LoggingUtility.log(`Auto-maintenance progress: ${current}/${total} - ${message}`);
 			}
 		};
@@ -374,52 +397,176 @@ export class RAGService {
 	}
 
 	/**
+	 * Check if a file is currently being edited (active in workspace)
+	 */
+	private isFileCurrentlyActive(file: TFile): boolean {
+		try {
+			const activeLeaf = this.app.workspace.activeLeaf;
+			if (!activeLeaf || !activeLeaf.view) {
+				return false;
+			}
+
+			// Check if the active view is a markdown view with this file
+			if (activeLeaf.view.getViewType() === 'markdown') {
+				const activeFile = (activeLeaf.view as any).file;
+				return activeFile && activeFile.path === file.path;
+			}
+
+			return false;
+		} catch (error) {
+			LoggingUtility.warn('Error checking if file is active:', error);
+			return false; // Err on the side of processing if we can't detect
+		}
+	}
+
+	/**
 	 * Start watching for file changes
+	 * 
+	 * This implements a smart file watching system that prevents UI freezing:
+	 * 1. Files being actively edited are skipped and tracked for later processing
+	 * 2. When user switches notes, the previously active file is immediately processed
+	 * 3. Background processing with debouncing handles file updates without blocking UI
+	 * 4. Periodic backup processing ensures no files are missed (every 30 seconds)
 	 */
 	startFileWatcher(): void {
 		// Watch for file modifications
 		this.fileChangeRef = this.app.vault.on('modify', async (file) => {
 			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
-				// Check if file actually changed by comparing checksum
-				try {
-					const content = await this.app.vault.read(file);
-					const newChecksum = CRC32.str(content).toString(16);
-					
-					const existingDocs = this.vectorDB.getFileDocuments(file.path);
-					if (existingDocs.length > 0 && existingDocs[0].metadata.fileChecksum === newChecksum) {
-						// File content hasn't actually changed, skip update
-						LoggingUtility.log(`File modification detected but content unchanged: ${file.path}`);
-						return;
-					}
-					
-					LoggingUtility.log(`File content changed: ${file.path} (checksum: ${newChecksum})`);
-					await this.updateFileEmbeddings(file);
-					await this.vectorDB.save();
-				} catch (error) {
-					LoggingUtility.error(`Error checking file modification: ${file.path}`, error);
+				// Skip processing if this is the currently active file being edited
+				if (this.isFileCurrentlyActive(file)) {
+					LoggingUtility.log(`Skipping RAG update for active file: ${file.path}`);
+					// Track this file for later processing when it becomes inactive
+					this.pendingActiveFileUpdates.add(file.path);
+					return;
 				}
+				
+				// Queue the file update to run in background with debouncing
+				this.queueFileUpdate(file, 'modify');
 			}
 		});
 
 		// Watch for file renames
 		this.fileRenameRef = this.app.vault.on('rename', async (file, oldPath) => {
 			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
-				LoggingUtility.log(`File renamed from ${oldPath} to ${file.path}`);
-				await this.vectorDB.removeFileDocuments(oldPath);
-				await this.updateFileEmbeddings(file);
+				// Renames should always be processed as they don't interfere with editing
+				this.queueFileUpdate(file, 'rename', oldPath);
 			}
 		});
 
 		// Watch for file deletions
 		this.fileDeleteRef = this.app.vault.on('delete', async (file) => {
 			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
-				LoggingUtility.log(`File deleted: ${file.path}`);
-				await this.vectorDB.removeFileDocuments(file.path);
-				await this.vectorDB.save();
+				// Remove from pending updates if it was there
+				this.pendingActiveFileUpdates.delete(file.path);
+				
+				// Process deletions immediately as they're quick and file is gone
+				setTimeout(async () => {
+					try {
+						LoggingUtility.log(`File deleted: ${file.path}`);
+						await this.vectorDB.removeFileDocuments(file.path);
+						await this.vectorDB.save();
+					} catch (error) {
+						LoggingUtility.error(`Error processing file deletion: ${file.path}`, error);
+					}
+				}, 0);
 			}
 		});
 
+		// Watch for workspace active leaf changes (when user switches notes)
+		this.workspaceChangeRef = this.app.workspace.on('active-leaf-change', (leaf) => {
+			this.handleActiveLeafChange(leaf);
+		});
+
+		// Initialize current active file tracking
+		this.updateLastActiveFile();
+
+		// Start periodic check for previously active files that are now inactive (as backup)
+		this.startActiveFileMonitoring();
+
 		LoggingUtility.log('File watcher started');
+	}
+
+	/**
+	 * Handle when the active leaf changes (user switches notes)
+	 */
+	private handleActiveLeafChange(leaf: any): void {
+		try {
+			// Get the file that was previously active
+			const previousActiveFile = this.lastActiveFilePath;
+			
+			// Update to current active file
+			this.updateLastActiveFile();
+			
+			// Process the previously active file if it needs updating
+			if (previousActiveFile && this.pendingActiveFileUpdates.has(previousActiveFile)) {
+				const file = this.app.vault.getAbstractFileByPath(previousActiveFile);
+				if (file instanceof TFile) {
+					LoggingUtility.log(`Note switched, immediately processing previously active file: ${previousActiveFile}`);
+					this.pendingActiveFileUpdates.delete(previousActiveFile);
+					
+					// Process immediately since the file is no longer active
+					setTimeout(() => {
+						this.queueFileUpdate(file, 'modify');
+					}, 100); // Small delay to ensure the switch is complete
+				}
+			}
+		} catch (error) {
+			LoggingUtility.warn('Error handling active leaf change:', error);
+		}
+	}
+
+	/**
+	 * Update tracking of the last active file
+	 */
+	private updateLastActiveFile(): void {
+		try {
+			const activeLeaf = this.app.workspace.activeLeaf;
+			if (activeLeaf && activeLeaf.view && activeLeaf.view.getViewType() === 'markdown') {
+				const activeFile = (activeLeaf.view as any).file;
+				this.lastActiveFilePath = activeFile ? activeFile.path : null;
+			} else {
+				this.lastActiveFilePath = null;
+			}
+		} catch (error) {
+			LoggingUtility.warn('Error updating last active file:', error);
+			this.lastActiveFilePath = null;
+		}
+	}
+
+	/**
+	 * Start monitoring for files that were active but are now inactive (backup system)
+	 */
+	private startActiveFileMonitoring(): void {
+		// Check every 30 seconds for files that need processing (reduced frequency since we have immediate processing)
+		this.activeFileCheckInterval = setInterval(() => {
+			if (this.pendingActiveFileUpdates.size > 0) {
+				this.processPendingActiveFiles();
+			}
+		}, 30000); // 30 second interval (was 10 seconds)
+	}
+
+	/**
+	 * Process files that were previously active but may now be inactive
+	 */
+	private async processPendingActiveFiles(): Promise<void> {
+		const filesToProcess: string[] = [];
+		
+		for (const filePath of this.pendingActiveFileUpdates) {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile && !this.isFileCurrentlyActive(file)) {
+				filesToProcess.push(filePath);
+			}
+		}
+		
+		// Process files that are no longer active
+		for (const filePath of filesToProcess) {
+			this.pendingActiveFileUpdates.delete(filePath);
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile) {
+				LoggingUtility.log(`Processing previously active file that is now inactive: ${filePath}`);
+				this.queueFileUpdate(file, 'modify');
+			}
+		}
 	}
 
 	/**
@@ -435,7 +582,110 @@ export class RAGService {
 		if (this.fileDeleteRef) {
 			this.app.vault.offref(this.fileDeleteRef);
 		}
+		if (this.workspaceChangeRef) {
+			this.app.workspace.offref(this.workspaceChangeRef);
+		}
+		
+		// Clear any pending file update timers
+		for (const timeout of this.fileUpdateQueue.values()) {
+			clearTimeout(timeout);
+		}
+		this.fileUpdateQueue.clear();
+		
+		// Clear active file monitoring
+		if (this.activeFileCheckInterval) {
+			clearInterval(this.activeFileCheckInterval);
+			this.activeFileCheckInterval = undefined;
+		}
+		this.pendingActiveFileUpdates.clear();
+		this.lastActiveFilePath = null;
+		
 		LoggingUtility.log('File watcher stopped');
+	}
+
+	/**
+	 * Queue file updates to run in background with debouncing
+	 */
+	private queueFileUpdate(file: TFile, operation: 'modify' | 'rename', oldPath?: string): void {
+		const filePath = file.path;
+		
+		// Clear existing timeout for this file if it exists
+		if (this.fileUpdateQueue.has(filePath)) {
+			clearTimeout(this.fileUpdateQueue.get(filePath)!);
+		}
+		
+		// Set new timeout to process the file update after a brief delay
+		const timeout = setTimeout(async () => {
+			try {
+				this.fileUpdateQueue.delete(filePath);
+				
+				// Double-check if file is still active before processing
+				if (operation === 'modify' && this.isFileCurrentlyActive(file)) {
+					LoggingUtility.log(`File became active during queue delay, skipping RAG update: ${file.path}`);
+					// Track this file for later processing when it becomes inactive
+					this.pendingActiveFileUpdates.add(file.path);
+					return;
+				}
+				
+				// Remove from pending active files if it was there
+				this.pendingActiveFileUpdates.delete(filePath);
+				
+				await this.processFileUpdateBackground(file, operation, oldPath);
+			} catch (error) {
+				LoggingUtility.error(`Error processing file update for ${filePath}:`, error);
+			}
+		}, 500); // 500ms debounce delay
+		
+		this.fileUpdateQueue.set(filePath, timeout);
+	}
+
+	/**
+	 * Process file updates in background to avoid blocking UI
+	 */
+	private async processFileUpdateBackground(file: TFile, operation: 'modify' | 'rename', oldPath?: string): Promise<void> {
+		// Prevent overlapping background updates
+		if (this.isProcessingFileUpdates) {
+			// Re-queue for later processing
+			setTimeout(() => {
+				this.queueFileUpdate(file, operation, oldPath);
+			}, 1000);
+			return;
+		}
+
+		this.isProcessingFileUpdates = true;
+
+		try {
+			if (operation === 'modify') {
+				// Check if file actually changed by comparing checksum
+				const content = await this.app.vault.read(file);
+				const newChecksum = CRC32.str(content).toString(16);
+				
+				const existingDocs = this.vectorDB.getFileDocuments(file.path);
+				if (existingDocs.length > 0 && existingDocs[0].metadata.fileChecksum === newChecksum) {
+					// File content hasn't actually changed, skip update
+					LoggingUtility.log(`File modification detected but content unchanged: ${file.path}`);
+					return;
+				}
+				
+				LoggingUtility.log(`File content changed: ${file.path} (checksum: ${newChecksum})`);
+				await this.updateFileEmbeddings(file);
+				await this.vectorDB.save();
+				
+			} else if (operation === 'rename') {
+				LoggingUtility.log(`File renamed from ${oldPath} to ${file.path}`);
+				if (oldPath) {
+					await this.vectorDB.removeFileDocuments(oldPath);
+				}
+				await this.updateFileEmbeddings(file);
+				await this.vectorDB.save();
+			}
+			
+			// Yield control periodically during processing
+			await new Promise(resolve => setTimeout(resolve, 0));
+			
+		} finally {
+			this.isProcessingFileUpdates = false;
+		}
 	}
 
 	/**
@@ -668,14 +918,15 @@ export class RAGService {
 				return;
 			}
 			
-			// Yield control briefly for very large files
-			if (content.length > 50000) {
-				await new Promise(resolve => setTimeout(resolve, 0));
-			}
+			// Yield control briefly before starting embedding generation
+			await new Promise(resolve => setTimeout(resolve, 0));
 			
 			// Generate embeddings for all chunks
 			const texts = chunks.map(c => c.text);
 			const embeddings = await this.embeddingService.generateEmbeddings(texts);
+			
+			// Yield control after embedding generation
+			await new Promise(resolve => setTimeout(resolve, 0));
 			
 			// Create chunk documents
 			const chunkDocuments = chunks.map((chunk, index) => ({

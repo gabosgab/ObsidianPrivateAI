@@ -2,11 +2,16 @@ import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice
 import { ChatView } from './ChatView';
 import { LoggingUtility } from './LoggingUtility';
 import { RAGService } from './RAGService';
-import { RAGProgressDialog } from './RAGProgressDialog';
 import './styles.css';
 import manifest from './manifest.json';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
+
+export enum ContextMode {
+	OPEN_NOTES = 'open-notes',
+	SEARCH = 'search',
+	NONE = 'none'
+}
 
 interface LocalLLMSettings {
 	apiEndpoint: string;
@@ -18,18 +23,17 @@ interface LocalLLMSettings {
 	searchMaxResults: number;
 	searchContextPercentage: number;
 	searchThreshold: number;
-	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'rag' | 'none';
+	// Context mode setting - updated to remove RAG distinction
+	contextMode: ContextMode;
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
-	// RAG settings
-	enableRAG: boolean;
+	// RAG settings (RAG is now always enabled)
 	ragThreshold: number;
 	ragMaxResults: number;
 	// Embedding settings
 	embeddingEndpoint: string;
 	embeddingModel: string;
-	// RAG Auto-maintenance settings
+	// RAG Auto-maintenance settings (always enabled)
 	ragAutoMaintenance: boolean;
 	ragBackgroundIndexing: boolean;
 	ragSilentMode: boolean;
@@ -45,18 +49,17 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	searchMaxResults: 5,
 	searchContextPercentage: 50,
 	searchThreshold: 0.3,
-	// Default context mode
-	contextMode: 'open-notes',
+	// Default context mode (search now uses RAG)
+	contextMode: ContextMode.OPEN_NOTES,
 	// Default developer logging setting
 	enableDeveloperLogging: false,
-	// RAG defaults
-	enableRAG: false,
+	// RAG defaults (always enabled)
 	ragThreshold: 0.5,
 	ragMaxResults: 5,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
-	// RAG Auto-maintenance settings
+	// RAG Auto-maintenance settings (always enabled)
 	ragAutoMaintenance: true,
 	ragBackgroundIndexing: true,
 	ragSilentMode: false
@@ -74,21 +77,25 @@ export default class LocalLLMPlugin extends Plugin {
 		// Set developer logging based on settings
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
 		
-		// Initialize RAG service
+		// Initialize RAG service (always enabled with auto-maintenance)
 		this.ragService = new RAGService(this.app, {
 			endpoint: this.settings.embeddingEndpoint,
 			model: this.settings.embeddingModel
 		}, {
 			autoMaintenance: this.settings.ragAutoMaintenance,
 			backgroundIndexing: this.settings.ragBackgroundIndexing,
-			silentMode: this.settings.ragSilentMode
+			silentMode: this.settings.ragSilentMode,
+			progressCallback: (current, total, message) => {
+				this.notifyChatViewsOfRAGProgress(current, total, message);
+			},
+			completionCallback: () => {
+				this.notifyChatViewsOfRAGComplete();
+			}
 		});
 		await this.ragService.initialize();
 		
-		// Start file watcher if RAG is enabled
-		if (this.settings.enableRAG) {
-			this.ragService.startFileWatcher();
-		}
+		// Always start file watcher since RAG is always enabled
+		this.ragService.startFileWatcher();
 
 		// Register the view
 		this.registerView(
@@ -152,6 +159,32 @@ export default class LocalLLMPlugin extends Plugin {
 			// In Obsidian v1.7.2+, views start as DeferredView until they become visible
 			if (leaf.view instanceof ChatView) {
 				leaf.view.updateContextModeFromSettings();
+			}
+		});
+	}
+
+	/**
+	 * Notify all chat views about RAG indexing progress
+	 */
+	notifyChatViewsOfRAGProgress(current: number, total: number, message: string) {
+		const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+		leaves.forEach(leaf => {
+			const chatView = leaf.view as ChatView;
+			if (chatView && typeof chatView.showRAGProgress === 'function') {
+				chatView.showRAGProgress(current, total, message);
+			}
+		});
+	}
+
+	/**
+	 * Notify all chat views that RAG indexing is complete
+	 */
+	notifyChatViewsOfRAGComplete() {
+		const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+		leaves.forEach(leaf => {
+			const chatView = leaf.view as ChatView;
+			if (chatView && typeof chatView.onRAGIndexingComplete === 'function') {
+				chatView.onRAGIndexingComplete();
 			}
 		});
 	}
@@ -228,13 +261,12 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setName('Default context mode')
 			.setDesc('The default context mode to use when opening a new chat')
 			.addDropdown(dropdown => dropdown
-				.addOption('open-notes', 'Open Tabs')
-				.addOption('search', 'Search Vault')
-				.addOption('rag', 'RAG Search')
-				.addOption('none', 'No Context')
+				.addOption(ContextMode.OPEN_NOTES, 'Open Tabs')
+				.addOption(ContextMode.SEARCH, 'All Notes')
+				.addOption(ContextMode.NONE, 'No Context')
 				.setValue(this.plugin.settings.contextMode)
 				.onChange(async (value) => {
-					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'rag' | 'none';
+					this.plugin.settings.contextMode = value as ContextMode;
 					await this.plugin.saveSettings();
 				}));
 
@@ -300,11 +332,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		addStyledSlider(
 			new Setting(containerEl)
 				.setName('Max search results')
-				.setDesc('Maximum number of notes to include as context'),
+				.setDesc('Maximum number of notes to include as context (uses RAG database for enhanced relevance)'),
 			{
-				min: 1, max: 10, step: 1, value: this.plugin.settings.searchMaxResults,
+				min: 1, max: 10, step: 1, value: this.plugin.settings.ragMaxResults,
 				onChange: async (value) => {
-					this.plugin.settings.searchMaxResults = value;
+					this.plugin.settings.ragMaxResults = value;
 					await this.plugin.saveSettings();
 				}
 			}
@@ -327,36 +359,26 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		addStyledSlider(
 			new Setting(containerEl)
 				.setName('Search relevance threshold')
-				.setDesc('Minimum relevance score for notes to be included (0 = include all, 1 = very strict)'),
+				.setDesc('Minimum relevance score for notes to be included using RAG similarity (0 = include all, 1 = very strict)'),
 			{
-				min: 0, max: 1, step: 0.1, value: this.plugin.settings.searchThreshold,
+				min: 0, max: 1, step: 0.1, value: this.plugin.settings.ragThreshold,
 				onChange: async (value) => {
-					this.plugin.settings.searchThreshold = value;
+					this.plugin.settings.ragThreshold = value;
 					await this.plugin.saveSettings();
 				},
 				format: (v) => v.toFixed(2)
 			}
 		);
 
-		containerEl.createEl('h4', { text: 'RAG Database Settings' });
+		containerEl.createEl('h4', { text: 'RAG Database' });
 
-		// Enable RAG setting
+		// Enable RAG setting (now always enabled but showing status)
 		new Setting(containerEl)
 			.setName('Enable RAG database')
-			.setDesc('Enable the Retrieval-Augmented Generation (RAG) database for enhanced context search')
+			.setDesc('RAG is always enabled with auto-maintenance for enhanced search performance')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableRAG)
-				.onChange(async (value) => {
-					this.plugin.settings.enableRAG = value;
-					await this.plugin.saveSettings();
-					
-					// Start or stop file watcher based on setting
-					if (value) {
-						this.plugin.ragService.startFileWatcher();
-					} else {
-						this.plugin.ragService.stopFileWatcher();
-					}
-				}));
+				.setValue(true) // Always enabled
+				.setDisabled(true));
 
 		// RAG statistics
 		const ragStats = this.plugin.ragService.getStats();
@@ -372,30 +394,28 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setButtonText('Smart Update')
 				.setCta()
 				.onClick(async () => {
-					// Create progress dialog
-					const progressDialog = new RAGProgressDialog(
-						this.app,
-						() => {
-							// Cancel callback
-							this.plugin.ragService.cancelIndexing();
-						}
-					);
+					button.setButtonText('Updating...');
+					button.setDisabled(true);
 					
-					progressDialog.open();
-					
-					// Start smart indexing
 					try {
 						await this.plugin.ragService.buildIndex((current, total, message) => {
-							progressDialog.updateProgress(current, total, message);
+							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
 						});
 						
 						// Update stats display
 						const newStats = this.plugin.ragService.getStats();
 						this.updateStatusDisplay(containerEl, newStats);
 						
-						progressDialog.complete('RAG database updated successfully!');
+						// Notify chat views that indexing is complete
+						this.plugin.notifyChatViewsOfRAGComplete();
+						
+						new Notice('RAG database updated successfully!');
 					} catch (error) {
-						progressDialog.showError(error.message);
+						LoggingUtility.error('RAG update failed:', error);
+						new Notice(`RAG database update failed: ${error.message}`);
+					} finally {
+						button.setButtonText('Smart Update');
+						button.setDisabled(false);
 					}
 				}));
 
@@ -407,30 +427,28 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setButtonText('Force Rebuild')
 				.setWarning()
 				.onClick(async () => {
-					// Create progress dialog
-					const progressDialog = new RAGProgressDialog(
-						this.app,
-						() => {
-							// Cancel callback
-							this.plugin.ragService.cancelIndexing();
-						}
-					);
+					button.setButtonText('Rebuilding...');
+					button.setDisabled(true);
 					
-					progressDialog.open();
-					
-					// Start force rebuild
 					try {
 						await this.plugin.ragService.forceRebuildIndex((current, total, message) => {
-							progressDialog.updateProgress(current, total, message);
+							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
 						});
 						
 						// Update stats display
 						const newStats = this.plugin.ragService.getStats();
 						this.updateStatusDisplay(containerEl, newStats);
 						
-						progressDialog.complete('RAG database completely rebuilt!');
+						// Notify chat views that indexing is complete
+						this.plugin.notifyChatViewsOfRAGComplete();
+						
+						new Notice('RAG database completely rebuilt!');
 					} catch (error) {
-						progressDialog.showError(error.message);
+						LoggingUtility.error('RAG rebuild failed:', error);
+						new Notice(`RAG database rebuild failed: ${error.message}`);
+					} finally {
+						button.setButtonText('Force Rebuild');
+						button.setDisabled(false);
 					}
 				}));
 
@@ -488,35 +506,21 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		// Auto-maintenance settings
 		new Setting(containerEl)
 			.setName('Enable automatic maintenance')
-			.setDesc('Automatically detect fresh installs and maintain the RAG database on startup')
+			.setDesc('RAG auto-maintenance is always enabled to keep the database up to date')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.ragAutoMaintenance)
-				.onChange(async (value) => {
-					this.plugin.settings.ragAutoMaintenance = value;
-					await this.plugin.saveSettings();
-					// Update the RAG service initialization options
-					this.plugin.ragService.updateInitializationOptions({
-						autoMaintenance: value
-					});
-				}));
+				.setDisabled(true));
 
 		new Setting(containerEl)
 			.setName('Background indexing')
-			.setDesc('Run automatic indexing in the background to avoid blocking Obsidian startup')
+			.setDesc('RAG background indexing is always enabled to avoid blocking Obsidian startup')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.ragBackgroundIndexing)
-				.onChange(async (value) => {
-					this.plugin.settings.ragBackgroundIndexing = value;
-					await this.plugin.saveSettings();
-					// Update the RAG service initialization options
-					this.plugin.ragService.updateInitializationOptions({
-						backgroundIndexing: value
-					});
-				}));
+				.setDisabled(true));
 
 		new Setting(containerEl)
 			.setName('Silent auto-maintenance')
-			.setDesc('Hide notices and progress updates during automatic maintenance operations')
+			.setDesc('RAG silent mode setting - controls whether maintenance operations show notices')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.ragSilentMode)
 				.onChange(async (value) => {
@@ -656,4 +660,4 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		}
 	}
-} 
+}

@@ -780,3 +780,73 @@
 .theme-dark .rag-progress-floating-dialog:hover {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
+.local-llm-rag-status-area {
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.local-llm-rag-status-hidden {
+  max-height: 0;
+  opacity: 0;
+}
+.local-llm-rag-status-visible {
+  max-height: 100px;
+  opacity: 1;
+}
+.local-llm-rag-status-content {
+  padding: 12px 16px;
+}
+.local-llm-rag-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.local-llm-rag-stats-icon {
+  font-size: 14px;
+}
+.local-llm-rag-stats-text {
+  line-height: 1.4;
+}
+.local-llm-rag-progress {
+  font-size: 13px;
+}
+.local-llm-rag-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+.local-llm-rag-progress-icon {
+  font-size: 14px;
+}
+.local-llm-rag-progress-details {
+  margin-left: 22px;
+}
+.local-llm-rag-progress-message {
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.local-llm-rag-progress-bar-container {
+  background: var(--background-modifier-border);
+  border-radius: 8px;
+  height: 6px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.local-llm-rag-progress-bar {
+  background: var(--interactive-accent);
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s ease;
+}
+.local-llm-rag-progress-percentage {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+}
