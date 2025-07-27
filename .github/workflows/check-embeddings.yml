@@ -1,0 +1,58 @@
+name: Check for Embedding Files
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  check-embeddings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for embeddings.json files
+        run: |
+          echo "Checking for embeddings.json files..."
+          
+          # Check for specific file vector-index/embeddings.json
+          if [ -f "vector-index/embeddings.json" ]; then
+            echo "❌ ERROR: Found vector-index/embeddings.json"
+            echo "This file should not be committed to the repository."
+            exit 1
+          fi
+          
+          # Check for any embeddings.json files in the entire project
+          embeddings_files=$(find . -name "embeddings.json" -type f | grep -v ".git/" || true)
+          
+          if [ -n "$embeddings_files" ]; then
+            echo "❌ ERROR: Found embeddings.json files in the following locations:"
+            echo "$embeddings_files"
+            echo ""
+            echo "These files should not be committed to the repository as they may contain:"
+            echo "- Large binary data that bloats the repository"
+            echo "- Sensitive embedding data"
+            echo "- Generated content that should be created locally"
+            echo ""
+            echo "Please remove these files and add them to .gitignore if needed."
+            exit 1
+          fi
+          
+          echo "✅ No embeddings.json files found. Good to go!"
+
+      - name: Check .gitignore for embeddings exclusion
+        run: |
+          echo "Checking if embeddings.json is properly ignored..."
+          
+          if grep -q "embeddings.json" .gitignore 2>/dev/null; then
+            echo "✅ embeddings.json is listed in .gitignore"
+          else
+            echo "⚠️  WARNING: Consider adding 'embeddings.json' to .gitignore to prevent future commits"
+            echo "You can add the following lines to your .gitignore:"
+            echo ""
+            echo "# Embedding files"
+            echo "**/embeddings.json"
+            echo "vector-index/embeddings.json"
+          fi 
