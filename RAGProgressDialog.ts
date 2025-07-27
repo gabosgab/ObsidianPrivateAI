@@ -55,7 +55,7 @@ export class RAGProgressDialog {
 		// Title with drag handle
 		const titleEl = this.containerEl.createEl('div', {
 			cls: 'rag-progress-title',
-			text: 'Building RAG Database'
+			text: 'Building Semantic Search Index'
 		});
 		titleEl.style.cssText = `
 			font-size: 16px;

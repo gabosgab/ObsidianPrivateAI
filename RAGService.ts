@@ -757,7 +757,42 @@ export class RAGService {
 				return;
 			}
 			
-			// Process only the files that need updating
+			// Pre-calculate total chunks across all files that need updating
+			let totalChunks = 0;
+			const fileChunkCounts = new Map<string, number>();
+			
+			if (this.progressCallback) {
+				this.progressCallback(0, filesToUpdate.length, 'Calculating total chunks...');
+			}
+			
+			for (let i = 0; i < filesToUpdate.length; i++) {
+				const filePath = filesToUpdate[i];
+				const file = this.app.vault.getAbstractFileByPath(filePath);
+				
+				if (file instanceof TFile) {
+					try {
+						const content = await this.app.vault.read(file);
+						const chunks = this.splitIntoParagraphs(content);
+						const chunkCount = chunks.length;
+						fileChunkCounts.set(filePath, chunkCount);
+						totalChunks += chunkCount;
+					} catch (error) {
+						LoggingUtility.warn(`Could not read file for chunk calculation: ${filePath}`, error);
+						fileChunkCounts.set(filePath, 0);
+					}
+				}
+				
+				// Yield control periodically during chunk counting
+				if (i % 10 === 0) {
+					await new Promise(resolve => setTimeout(resolve, 0));
+				}
+			}
+			
+			LoggingUtility.log(`Total chunks to process: ${totalChunks} across ${filesToUpdate.length} files`);
+			
+			// Process files and track chunk-level progress
+			let processedChunks = 0;
+			
 			for (let i = 0; i < filesToUpdate.length; i++) {
 				if (this.indexingAbortController.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
@@ -768,11 +803,20 @@ export class RAGService {
 				const file = this.app.vault.getAbstractFileByPath(filePath);
 				
 				if (file instanceof TFile) {
-					if (this.progressCallback) {
-						this.progressCallback(i + 1, filesToUpdate.length, `Indexing: ${file.basename}`);
+					const chunkCount = fileChunkCounts.get(filePath) || 0;
+					
+					if (this.progressCallback && chunkCount > 0) {
+						this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
 					}
 					
-					await this.updateFileEmbeddings(file);
+					await this.updateFileEmbeddingsWithProgress(file, (chunkIndex, totalFileChunks) => {
+						if (this.progressCallback) {
+							const currentChunk = processedChunks + chunkIndex + 1;
+							this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
+						}
+					});
+					
+					processedChunks += chunkCount;
 					
 					// Save periodically to avoid losing progress
 					if ((i + 1) % 10 === 0) {
@@ -790,8 +834,8 @@ export class RAGService {
 			await this.vectorDB.save();
 			
 			const stats = this.vectorDB.getStats();
-			LoggingUtility.log(`Indexing complete. Updated ${filesToUpdate.length} files. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
-			new Notice(`RAG indexing complete: Updated ${filesToUpdate.length} files`);
+			LoggingUtility.log(`Indexing complete. Updated ${filesToUpdate.length} files with ${processedChunks} total chunks. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
+			new Notice(`RAG indexing complete: Updated ${filesToUpdate.length} files with ${processedChunks} chunks`);
 			
 		} catch (error) {
 			LoggingUtility.error('Error during indexing:', error);
@@ -835,7 +879,39 @@ export class RAGService {
 			
 			LoggingUtility.log(`Starting complete rebuild of ${files.length} files`);
 			
-			// Process all files
+			// Pre-calculate total chunks across all files
+			let totalChunks = 0;
+			const fileChunkCounts = new Map<string, number>();
+			
+			if (this.progressCallback) {
+				this.progressCallback(0, files.length, 'Calculating total chunks...');
+			}
+			
+			for (let i = 0; i < files.length; i++) {
+				const file = files[i];
+				
+				try {
+					const content = await this.app.vault.read(file);
+					const chunks = this.splitIntoParagraphs(content);
+					const chunkCount = chunks.length;
+					fileChunkCounts.set(file.path, chunkCount);
+					totalChunks += chunkCount;
+				} catch (error) {
+					LoggingUtility.warn(`Could not read file for chunk calculation: ${file.path}`, error);
+					fileChunkCounts.set(file.path, 0);
+				}
+				
+				// Yield control periodically during chunk counting
+				if (i % 10 === 0) {
+					await new Promise(resolve => setTimeout(resolve, 0));
+				}
+			}
+			
+			LoggingUtility.log(`Total chunks to process: ${totalChunks} across ${files.length} files`);
+			
+			// Process files and track chunk-level progress
+			let processedChunks = 0;
+			
 			for (let i = 0; i < files.length; i++) {
 				if (this.indexingAbortController.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
@@ -843,11 +919,20 @@ export class RAGService {
 				}
 				
 				const file = files[i];
-				if (this.progressCallback) {
-					this.progressCallback(i + 1, files.length, `Indexing: ${file.basename}`);
+				const chunkCount = fileChunkCounts.get(file.path) || 0;
+				
+				if (this.progressCallback && chunkCount > 0) {
+					this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
 				}
 				
-				await this.updateFileEmbeddings(file);
+				await this.updateFileEmbeddingsWithProgress(file, (chunkIndex: number, totalFileChunks: number) => {
+					if (this.progressCallback) {
+						const currentChunk = processedChunks + chunkIndex + 1;
+						this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
+					}
+				});
+				
+				processedChunks += chunkCount;
 				
 				// Save periodically to avoid losing progress
 				if ((i + 1) % 10 === 0) {
@@ -864,8 +949,8 @@ export class RAGService {
 			await this.vectorDB.save();
 			
 			const stats = this.vectorDB.getStats();
-			LoggingUtility.log(`Complete rebuild finished. Indexed ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
-			new Notice(`RAG complete rebuild finished: ${stats.fileCount} files indexed`);
+			LoggingUtility.log(`Complete rebuild finished. Indexed ${processedChunks} total chunks across ${files.length} files. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
+			new Notice(`RAG complete rebuild finished: ${files.length} files with ${processedChunks} chunks indexed`);
 			
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);
@@ -946,6 +1031,79 @@ export class RAGService {
 			
 			// Store in vector database
 			await this.vectorDB.upsertFileDocuments(file.path, chunkDocuments);
+			
+			LoggingUtility.log(`Updated ${chunkDocuments.length} chunk embeddings for file: ${file.path}`);
+			
+		} catch (error) {
+			LoggingUtility.error(`Error updating embeddings for ${file.path}:`, error);
+		}
+	}
+
+	/**
+	 * Update embeddings for a single file with chunk-level progress reporting
+	 */
+	private async updateFileEmbeddingsWithProgress(file: TFile, progressCallback?: (chunkIndex: number, totalChunks: number) => void): Promise<void> {
+		try {
+			const content = await this.app.vault.read(file);
+			const metadata = this.app.metadataCache.getFileCache(file);
+			const title = this.getFileTitle(file, metadata);
+			
+			// Calculate checksum
+			const checksum = CRC32.str(content).toString(16);
+			
+			// Split content into chunks
+			const chunks = this.splitIntoParagraphs(content);
+			
+			if (chunks.length === 0) {
+				LoggingUtility.log(`No chunks found in file: ${file.path}`);
+				return;
+			}
+			
+			// Generate embeddings for chunks one at a time with progress reporting
+			const chunkDocuments = [];
+			
+			for (let i = 0; i < chunks.length; i++) {
+				const chunk = chunks[i];
+				
+				// Report progress for current chunk
+				if (progressCallback) {
+					progressCallback(i, chunks.length);
+				}
+				
+				// Yield control briefly before each embedding generation
+				if (i % 5 === 0) {
+					await new Promise(resolve => setTimeout(resolve, 0));
+				}
+				
+				// Generate embedding for this chunk
+				const embedding = await this.generateEmbedding(chunk.text);
+				
+				// Create chunk document
+				const chunkDocument = {
+					id: `${file.path}#c${chunk.index}`,
+					vector: embedding,
+					metadata: {
+						filePath: file.path,
+						fileName: file.basename,
+						title: title,
+						paragraphIndex: chunk.index,
+						paragraphText: chunk.text,
+						fileChecksum: checksum,
+						lastModified: file.stat.mtime,
+						fileSize: file.stat.size
+					}
+				};
+				
+				chunkDocuments.push(chunkDocument);
+			}
+			
+			// Store in vector database
+			await this.vectorDB.upsertFileDocuments(file.path, chunkDocuments);
+			
+			// Report final progress
+			if (progressCallback) {
+				progressCallback(chunks.length, chunks.length);
+			}
 			
 			LoggingUtility.log(`Updated ${chunkDocuments.length} chunk embeddings for file: ${file.path}`);
 			
