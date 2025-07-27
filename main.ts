@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	enableDeveloperLogging: false,
 	// RAG defaults (always enabled)
 	ragThreshold: 0.5,
-	ragMaxResults: 5,
+	ragMaxResults: 10,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
