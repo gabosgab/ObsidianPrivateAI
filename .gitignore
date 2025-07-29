@@ -16,6 +16,7 @@ build/
 
 # Plugin data files
 data.json
+embeddings.json
 
 # IDE and Editor files
 .vscode/
