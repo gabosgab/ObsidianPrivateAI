@@ -11,7 +11,7 @@ export class LoggingUtility {
 	static log(...args: any[]) {
 		// If plugin is not initialized, default to logging (for early initialization/unload)
 		// Or if settings are not yet loaded, or if developer logging is enabled
-		if (LoggingUtility.pluginReady || LoggingUtility.isDeveloperLoggingEnabled()) {
+		if (LoggingUtility.isDeveloperLoggingEnabled()) {
 			console.log(...args);
 		}
 	}
@@ -19,7 +19,7 @@ export class LoggingUtility {
 	static warn(...args: any[]) {
 		// If plugin is not initialized, default to logging (for early initialization/unload)
 		// Or if settings are not yet loaded, or if developer logging is enabled
-		if (LoggingUtility.pluginReady || LoggingUtility.isDeveloperLoggingEnabled()) {
+		if (LoggingUtility.isDeveloperLoggingEnabled()) {
 			console.warn(...args);
 		}
 	}
@@ -30,13 +30,17 @@ export class LoggingUtility {
 	}
 
 	private static isDeveloperLoggingEnabled(): boolean {
+		if (!LoggingUtility.pluginReady) {
+			return false;
+		}
+
 		try {
 			// Try to get the settings from SettingsManager
 			const settingsManager = SettingsManager.getInstance();
 			return settingsManager.getSetting('enableDeveloperLogging');
 		} catch (error) {
-			// If SettingsManager is not initialized yet, default to true for logging
-			return true;
+			// If SettingsManager is not initialized yet
+			return false;
 		}
 	}
 } 
