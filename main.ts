@@ -370,18 +370,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
-		containerEl.createEl('h4', { text: 'RAG Database' });
+		containerEl.createEl('h4', { text: 'All Notes Search' });
 
-		// Enable RAG setting (now always enabled but showing status)
-		new Setting(containerEl)
-			.setName('Enable RAG database')
-			.setDesc('RAG is always enabled with auto-maintenance for enhanced search performance')
-			.addToggle(toggle => toggle
-				.setValue(true) // Always enabled
-				.setDisabled(true));
-
-		// RAG statistics
 		const ragStats = this.plugin.ragService.getStats();
+		containerEl.createEl('p', { text: `<li><ul>Documents indexed: ${ragStats.documentCount}</ul></li> | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB` })
+
 		new Setting(containerEl)
 			.setName('RAG database status')
 			.setDesc(`Documents indexed: ${ragStats.documentCount} | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB`);
