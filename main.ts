@@ -87,11 +87,11 @@ export default class LocalLLMPlugin extends Plugin {
 
 	notifyChatViewsOfSettingsChange() {
 		// Get all open chat view leaves
-		const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
-		leaves.forEach(leaf => {
-			const chatView = leaf.view as ChatView;
-			if (chatView && typeof chatView.updateContextModeFromSettings === 'function') {
-				chatView.updateContextModeFromSettings();
+		this.app.workspace.iterateAllLeaves(leaf => {
+			// Check if the view is actually a ChatView instance (not a DeferredView)
+			// In Obsidian v1.7.2+, views start as DeferredView until they become visible
+			if (leaf.view instanceof ChatView) {
+				leaf.view.updateContextModeFromSettings();
 			}
 		});
 	}
