@@ -562,27 +562,16 @@ export class ChatView extends ItemView {
 			});
 			
 			copyButton.addEventListener('click', async () => {
-				try {
-					await navigator.clipboard.writeText(message.content);
-					
-					// Show success feedback
-					copyButton.textContent = '✅';
-					copyButton.classList.add('copied');
-					
-					setTimeout(() => {
-						copyButton.textContent = '🗐';
-						copyButton.classList.remove('copied');
-					}, 1000);
-				} catch (error) {
-					LoggingUtility.error('Failed to copy text:', error);
-					// Fallback for older browsers
-					const textArea = document.createElement('textarea');
-					textArea.value = message.content;
-					document.body.appendChild(textArea);
-					textArea.select();
-					document.execCommand('copy');
-					document.body.removeChild(textArea);
-				}
+				await navigator.clipboard.writeText(message.content);
+				
+				// Show success feedback
+				copyButton.textContent = '✅';
+				copyButton.classList.add('copied');
+				
+				setTimeout(() => {
+					copyButton.textContent = '🗐';
+					copyButton.classList.remove('copied');
+				}, 1000);
 			});
 			
 			// Add refresh button for installation messages (welcome messages with installation instructions)
@@ -739,37 +728,21 @@ export class ChatView extends ItemView {
 	}
 
 	private copyEntireConversation() {
-		try {
-			// Filter out welcome message and format conversation
-			const conversationMessages = this.messages
-				.filter(m => m.id !== 'welcome')
-				.map(m => {
-					const timestamp = m.timestamp.toLocaleString();
-					const role = m.role === 'user' ? 'You' : 'Assistant';
-					return `[${timestamp}] ${role}:\n${m.content}\n`;
-				});
-			
-			const conversationText = conversationMessages.join('\n---\n\n');
-			
-			// Copy to clipboard
-			navigator.clipboard.writeText(conversationText).then(() => {
-				// Show success feedback
-				const notice = new Notice('✅ Conversation copied to clipboard!', 2000);
-			}).catch((error) => {
-				LoggingUtility.error('Failed to copy conversation:', error);
-				// Fallback for older browsers
-				const textArea = document.createElement('textarea');
-				textArea.value = conversationText;
-				document.body.appendChild(textArea);
-				textArea.select();
-				document.execCommand('copy');
-				document.body.removeChild(textArea);
-				new Notice('✅ Conversation copied to clipboard!', 2000);
+		// Filter out welcome message and format conversation
+		const conversationMessages = this.messages
+			.filter(m => m.id !== 'welcome')
+			.map(m => {
+				const timestamp = m.timestamp.toLocaleString();
+				const role = m.role === 'user' ? 'You' : 'Assistant';
+				return `[${timestamp}] ${role}:\n${m.content}\n`;
 			});
-		} catch (error) {
-			LoggingUtility.error('Error copying conversation:', error);
-			new Notice('❌ Failed to copy conversation', 2000);
-		}
+		
+		const conversationText = conversationMessages.join('\n---\n\n');
+		
+		// Copy to clipboard
+		navigator.clipboard.writeText(conversationText).then(() => { 
+			new Notice('✅ Conversation copied to clipboard!', 2000);
+		});
 	}
 
 	private static async getWelcomeMessage(llmService: LLMService): Promise<string> {
