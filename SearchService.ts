@@ -1,9 +1,5 @@
-import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
+import { App, TFile, CachedMetadata, getAllTags, MarkdownView } from 'obsidian';
 import { LoggingUtility } from './LoggingUtility';
-
-interface MarkdownView {
-	file: TFile;
-}
 
 export interface SearchResult {
 	file: TFile;
@@ -261,16 +257,18 @@ export class SearchService {
 
 					// Collect all open markdown files
 		for (const leaf of leaves) {
-			const file = (leaf.view as unknown as MarkdownView).file;
-			if (file && file.extension === 'md') {
-				openMarkdownFiles.push(file);
+			if (leaf.view instanceof MarkdownView) {
+				const file = leaf.view.file;
+				if (file && file.extension === 'md') {
+					openMarkdownFiles.push(file);
+				}
 			}
 		}
 
 					// Also check the active leaf in case it's not in the markdown leaves
 		const activeLeaf = this.app.workspace.activeLeaf;
-		if (activeLeaf && activeLeaf.view.getViewType().includes('markdown')) {
-			const activeFile = (activeLeaf.view as unknown as MarkdownView).file;
+		if (activeLeaf && activeLeaf.view instanceof MarkdownView) {
+			const activeFile = activeLeaf.view.file;
 			if (activeFile && activeFile.extension === 'md' && !openMarkdownFiles.some(f => f.path === activeFile.path)) {
 				openMarkdownFiles.push(activeFile);
 			}
