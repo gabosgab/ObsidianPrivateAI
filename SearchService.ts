@@ -60,7 +60,7 @@ export class SearchService {
 	private async searchFile(file: TFile, query: string, options: SearchOptions): Promise<SearchResult | null> {
 		try {
 			// Read file content
-			const content = await this.app.vault.read(file);
+			const content = await this.app.vault.cachedRead(file);
 			const metadata = this.app.metadataCache.getFileCache(file);
 			
 			// Calculate relevance score
@@ -285,7 +285,7 @@ export class SearchService {
 			const results: SearchResult[] = [];
 			for (const file of openMarkdownFiles) {
 				try {
-					const content = await this.app.vault.read(file);
+					const content = await this.app.vault.cachedRead(file);
 					const metadata = this.app.metadataCache.getFileCache(file);
 					
 					results.push({
@@ -343,7 +343,7 @@ export class SearchService {
 			const results: SearchResult[] = [];
 			for (const file of recentFiles) {
 				try {
-					const content = await this.app.vault.read(file);
+					const content = await this.app.vault.cachedRead(file);
 					const metadata = this.app.metadataCache.getFileCache(file);
 					
 					// Calculate relevance based on recency (more recent = higher relevance)
