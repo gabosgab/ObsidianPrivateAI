@@ -619,6 +619,12 @@
   margin-left: 12px;
   font-weight: bold;
 }
+.local-llm-system-prompt-textarea {
+  width: 100%;
+  margin-top: 8px;
+  margin-bottom: 16px;
+  resize: vertical;
+}
 .local-llm-settings-slider::-moz-range-track {
   height: 4px;
   border-radius: 2px;

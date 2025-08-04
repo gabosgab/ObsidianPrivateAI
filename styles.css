@@ -702,6 +702,14 @@
 	font-weight: bold;
 }
 
+/* System prompt textarea styles */
+.local-llm-system-prompt-textarea {
+	width: 100%;
+	margin-top: 8px;
+	margin-bottom: 16px;
+	resize: vertical;
+}
+
 /* For Firefox */
 .local-llm-settings-slider::-moz-range-track {
 	height: 4px;

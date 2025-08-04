@@ -229,10 +229,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		});
 		systemPromptTextArea.value = this.plugin.settings.systemPrompt;
-		systemPromptTextArea.style.width = '100%';
-		systemPromptTextArea.style.marginBottom = '16px';
-		systemPromptTextArea.style.marginTop = '8px';
-		systemPromptTextArea.style.resize = 'vertical';
 		
 		systemPromptTextArea.addEventListener('input', async () => {
 			this.plugin.settings.systemPrompt = systemPromptTextArea.value;
