@@ -182,17 +182,6 @@ export class ChatView extends ItemView {
 			this.stopStreaming();
 		});
 
-		// Add keyboard shortcut for copying selected text
-		this.messageContainer.addEventListener('keydown', (e) => {
-			if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-				const selection = window.getSelection();
-				if (selection && selection.toString().length > 0) {
-					// Let the default copy behavior work
-					return;
-				}
-			}
-		});
-
 		// Add initial welcome message
 		this.addMessage({
 			id: 'welcome',
