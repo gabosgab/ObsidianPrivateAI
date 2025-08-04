@@ -136,8 +136,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h4', { text: 'Private AI' });
-
 		// Helper to create a slider with live value label and custom style
 		const addStyledSlider = (setting: Setting, opts: {
 			min: number, max: number, step: number, value: number, onChange: (value: number) => Promise<void>,
