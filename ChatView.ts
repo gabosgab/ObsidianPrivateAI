@@ -465,7 +465,8 @@ export class ChatView extends ItemView {
 				// Clear existing content
 				contentEl.empty();
 				// Render markdown for the streaming content
-				await MarkdownRenderer.renderMarkdown(
+				MarkdownRenderer.render(
+					this.app,
 					content,
 					contentEl,
 					'',
@@ -548,7 +549,8 @@ export class ChatView extends ItemView {
 		// Render markdown for assistant messages, plain text for user messages
 		if (message.role === 'assistant' && !message.isStreaming) {
 			// Use Obsidian's markdown renderer for completed assistant messages
-			await MarkdownRenderer.renderMarkdown(
+			MarkdownRenderer.render(
+				this.app,
 				message.content,
 				contentEl,
 				'',
