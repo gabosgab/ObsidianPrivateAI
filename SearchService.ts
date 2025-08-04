@@ -265,10 +265,10 @@ export class SearchService {
 			}
 		}
 
-					// Also check the active leaf in case it's not in the markdown leaves
-		const activeLeaf = this.app.workspace.activeLeaf;
-		if (activeLeaf && activeLeaf.view instanceof MarkdownView) {
-			const activeFile = activeLeaf.view.file;
+					// Also check the active view in case it's not in the markdown leaves
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (activeView) {
+			const activeFile = activeView.file;
 			if (activeFile && activeFile.extension === 'md' && !openMarkdownFiles.some(f => f.path === activeFile.path)) {
 				openMarkdownFiles.push(activeFile);
 			}
