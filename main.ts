@@ -235,7 +235,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			await this.plugin.saveSettings();
 		});
 
-		containerEl.createEl('h4', { text: 'Search Settings' });
+		new Setting(containerEl).setName('Search').setHeading();
 
 		addStyledSlider(
 			new Setting(containerEl)
@@ -278,7 +278,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
-		containerEl.createEl('h4', { text: 'Support' });
+		new Setting(containerEl).setName('Support').setHeading();
 
 		// Add developer logging setting
 		new Setting(containerEl)
