@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent } 
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
 import { LoggingUtility } from './LoggingUtility';
-import LocalLLMPlugin from './main';
+import { SettingsManager } from './SettingsManager';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -45,19 +45,18 @@ export class ChatView extends ItemView {
 	private searchIndicator: HTMLElement;
 	private llmService: LLMService;
 	private searchService: SearchService;
-	private plugin: LocalLLMPlugin;
 	private isStreaming: boolean = false;
 	private currentAbortController: AbortController | null = null;
 	private contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none' = 'open-notes';
+	private contextModeDropdown: DropdownComponent;
 
-	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
+	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
-		this.plugin = plugin;
 		this.searchService = new SearchService(this.app);
 		// Initialize with plugin settings
 		this.updateLLMServiceFromSettings();
 		// Initialize context mode from plugin settings
-		this.contextMode = this.plugin.settings.contextMode;
+		this.contextMode = SettingsManager.getInstance().getSetting('contextMode');
 	}
 
 	getViewType(): string {
@@ -100,7 +99,7 @@ export class ChatView extends ItemView {
 			text: 'Context:'
 		});
 		
-		const dropdown = new DropdownComponent(contextModeContainer)
+		this.contextModeDropdown = new DropdownComponent(contextModeContainer)
 			.addOption('open-notes', 'Open Tabs')
 			.addOption('search', 'Search')
 			.addOption('last-7-days', 'Last 7 Days')
@@ -108,12 +107,11 @@ export class ChatView extends ItemView {
 			.onChange(async (value) => {
 				this.contextMode = value as 'search' | 'open-notes' | 'last-7-days' | 'none';
 				// Save the context mode to plugin settings
-				this.plugin.settings.contextMode = this.contextMode;
-				await this.plugin.saveSettings();
+				SettingsManager.getInstance().setSetting('contextMode', this.contextMode);
 			});
 		
 		// Set initial value based on plugin settings
-		dropdown.setValue(this.contextMode);
+		this.contextModeDropdown.setValue(this.contextMode);
 		
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
@@ -210,26 +208,23 @@ export class ChatView extends ItemView {
 
 	// Method to update LLM service from plugin settings
 	updateLLMServiceFromSettings() {
-		LoggingUtility.log('Updating LLM service with settings:', this.plugin.settings);
+		const settingsManager = SettingsManager.getInstance();
+		const settings = settingsManager.getSettings();
+		LoggingUtility.log('Updating LLM service with settings:', settings);
 		this.llmService = createLLMService({
-			apiEndpoint: this.plugin.settings.apiEndpoint,
-			maxTokens: this.plugin.settings.maxTokens,
-			temperature: this.plugin.settings.temperature,
-			systemPrompt: this.plugin.settings.systemPrompt
+			apiEndpoint: settings.apiEndpoint,
+			maxTokens: settings.maxTokens,
+			temperature: settings.temperature,
+			systemPrompt: settings.systemPrompt
 		});
 	}
 
 	// Method to update context mode from plugin settings
 	updateContextModeFromSettings() {
-		this.contextMode = this.plugin.settings.contextMode;
-		// Update the dropdown if it exists
-		const dropdown = this.containerEl.querySelector('.local-llm-context-mode-container .dropdown-component') as HTMLElement;
-		if (dropdown) {
-			// Find the dropdown component and update its value
-			const dropdownComponent = (dropdown as unknown as DropdownComponentWithPrivateAPI).__component;
-			if (dropdownComponent && typeof dropdownComponent.setValue === 'function') {
-				dropdownComponent.setValue(this.contextMode);
-			}
+		this.contextMode = SettingsManager.getInstance().getSetting('contextMode');
+		// Also update the dropdown if it exists
+		if (this.contextModeDropdown) {
+			this.contextModeDropdown.setValue(this.contextMode);
 		}
 	}
 
@@ -294,11 +289,12 @@ export class ChatView extends ItemView {
 				}
 			} else if (contextMode === 'search') {
 				// Search entire vault
-				const maxContextTokens = Math.floor(this.plugin.settings.maxTokens * (this.plugin.settings.searchContextPercentage / 100));
+				const settingsManager = SettingsManager.getInstance();
+				const maxContextTokens = Math.floor(settingsManager.getSetting('maxTokens') * (settingsManager.getSetting('searchContextPercentage') / 100));
 				searchResults = await this.searchService.searchVault(content, {
-					maxResults: this.plugin.settings.searchMaxResults,
+					maxResults: settingsManager.getSetting('searchMaxResults'),
 					maxTokens: maxContextTokens,
-					threshold: this.plugin.settings.searchThreshold
+					threshold: settingsManager.getSetting('searchThreshold')
 				});
 				
 				if (searchResults.length > 0) {
@@ -307,10 +303,11 @@ export class ChatView extends ItemView {
 				}
 			} else if (contextMode === 'last-7-days') {
 				// Use notes from the last 7 days as context
+				const settingsManager = SettingsManager.getInstance();
+				const maxResults = settingsManager.getSetting('searchMaxResults');
 				const recentNotes = await this.searchService.getRecentNotesContext();
 				if (recentNotes.length > 0) {
 					// Apply same limits as search mode
-					const maxResults = this.plugin.settings.searchMaxResults;
 					searchResults = recentNotes.slice(0, maxResults);
 					searchContext = this.searchService.formatSearchResults(searchResults);
 					LoggingUtility.log(`Using ${searchResults.length} notes from the last 7 days as context`);
@@ -470,7 +467,7 @@ export class ChatView extends ItemView {
 					content,
 					contentEl,
 					'',
-					this.plugin
+					this
 				);
 				// Add streaming cursor
 				const cursor = contentEl.createEl('span', {
@@ -554,7 +551,7 @@ export class ChatView extends ItemView {
 				message.content,
 				contentEl,
 				'',
-				this.plugin
+				this
 			);
 			
 			// Add copy button for assistant messages

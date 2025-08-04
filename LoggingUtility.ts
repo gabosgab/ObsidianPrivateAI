@@ -1,22 +1,25 @@
 import LocalLLMPlugin from './main';
+import { SettingsManager } from './SettingsManager';
 
 export class LoggingUtility {
-	private static plugin: LocalLLMPlugin | null = null;
+	private static pluginReady: boolean = false;
 
-	static initialize(plugin: LocalLLMPlugin) {
-		LoggingUtility.plugin = plugin;
+	static initialize() {
+		LoggingUtility.pluginReady = true;
 	}
 
 	static log(...args: any[]) {
-		// If plugin is not initialized or settings are undefined, default to logging (for early initialization/unload)
-		if (!LoggingUtility.plugin || !LoggingUtility.plugin.settings || LoggingUtility.plugin.settings.enableDeveloperLogging) {
+		// If plugin is not initialized, default to logging (for early initialization/unload)
+		// Or if settings are not yet loaded, or if developer logging is enabled
+		if (LoggingUtility.pluginReady || LoggingUtility.isDeveloperLoggingEnabled()) {
 			console.log(...args);
 		}
 	}
 
 	static warn(...args: any[]) {
-		// If plugin is not initialized or settings are undefined, default to logging (for early initialization/unload)
-		if (!LoggingUtility.plugin || !LoggingUtility.plugin.settings || LoggingUtility.plugin.settings.enableDeveloperLogging) {
+		// If plugin is not initialized, default to logging (for early initialization/unload)
+		// Or if settings are not yet loaded, or if developer logging is enabled
+		if (LoggingUtility.pluginReady || LoggingUtility.isDeveloperLoggingEnabled()) {
 			console.warn(...args);
 		}
 	}
@@ -24,5 +27,16 @@ export class LoggingUtility {
 	static error(...args: any[]) {
 		// Always log errors regardless of developer logging setting or plugin initialization
 		console.error(...args);
+	}
+
+	private static isDeveloperLoggingEnabled(): boolean {
+		try {
+			// Try to get the settings from SettingsManager
+			const settingsManager = SettingsManager.getInstance();
+			return settingsManager.getSetting('enableDeveloperLogging');
+		} catch (error) {
+			// If SettingsManager is not initialized yet, default to true for logging
+			return true;
+		}
 	}
 } 

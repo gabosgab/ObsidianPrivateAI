@@ -1,56 +1,24 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice } from 'obsidian';
 import { ChatView } from './ChatView';
 import { LoggingUtility } from './LoggingUtility';
+import { SettingsManager, LocalLLMSettings } from './SettingsManager';
 import './styles.css';
 import manifest from './manifest.json';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
-interface LocalLLMSettings {
-	apiEndpoint: string;
-	maxTokens: number;
-	temperature: number;
-	// System prompt setting
-	systemPrompt: string;
-	// Search settings
-	searchMaxResults: number;
-	searchContextPercentage: number;
-	searchThreshold: number;
-	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none';
-	// Developer logging setting
-	enableDeveloperLogging: boolean;
-}
-
-const DEFAULT_SETTINGS: LocalLLMSettings = {
-	apiEndpoint: 'http://localhost:1234/v1/chat/completions',
-	maxTokens: 10000,
-	temperature: 0.7,
-	// Default system prompt
-	systemPrompt: '',
-	// Search defaults
-	searchMaxResults: 5,
-	searchContextPercentage: 50,
-	searchThreshold: 0.3,
-	// Default context mode
-	contextMode: 'open-notes',
-	// Default developer logging setting
-	enableDeveloperLogging: false
-};
-
 export default class LocalLLMPlugin extends Plugin {
-	settings: LocalLLMSettings;
-
 	async onload() {
-		LoggingUtility.initialize(this);
-		LoggingUtility.log('Loading Private AI plugin');
+		LoggingUtility.initialize();
 
-		await this.loadSettings();
+		// Initialize settings manager
+		SettingsManager.initialize(this);
+		await SettingsManager.getInstance().loadSettings();
 
 		// Register the view
 		this.registerView(
 			CHAT_VIEW_TYPE,
-			(leaf) => new ChatView(leaf, this)
+			(leaf) => new ChatView(leaf)
 		);
 
 		// Add ribbon icon to open chat
@@ -73,16 +41,9 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async onunload() {
 		LoggingUtility.log('Unloading Private AI Chat plugin');
-	}
-
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
-		// Notify all open chat views about the settings change
-		this.notifyChatViewsOfSettingsChange();
+		
+		// Clean up singleton references to prevent memory leaks
+		SettingsManager.cleanup();
 	}
 
 	notifyChatViewsOfSettingsChange() {
@@ -133,6 +94,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 	display(): void {
 		const { containerEl } = this;
+		const settingsManager = SettingsManager.getInstance();
 
 		containerEl.empty();
 
@@ -172,10 +134,10 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.addOption('search', 'Search Vault')
 				.addOption('last-7-days', 'Last 7 Days')
 				.addOption('none', 'No Context')
-				.setValue(this.plugin.settings.contextMode)
+				.setValue(settingsManager.getSetting('contextMode'))
 				.onChange(async (value) => {
-					this.plugin.settings.contextMode = value as 'open-notes' | 'search' | 'last-7-days' | 'none';
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('contextMode', value as 'open-notes' | 'search' | 'last-7-days' | 'none');
+					this.plugin.notifyChatViewsOfSettingsChange();
 				}));
 
 		new Setting(containerEl)
@@ -183,10 +145,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setDesc('The endpoint URL for your local LLM API')
 			.addText(text => text
 				.setPlaceholder('http://localhost:1234/v1/chat/completions')
-				.setValue(this.plugin.settings.apiEndpoint)
+				.setValue(settingsManager.getSetting('apiEndpoint'))
 				.onChange(async (value) => {
-					this.plugin.settings.apiEndpoint = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('apiEndpoint', value);
 				}));
 
 		addStyledSlider(
@@ -194,10 +155,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setName('Max tokens')
 				.setDesc('Maximum number of tokens in the response'),
 			{
-				min: 100, max: 40000, step: 100, value: this.plugin.settings.maxTokens,
+				min: 100, max: 40000, step: 100, value: settingsManager.getSetting('maxTokens'),
 				onChange: async (value) => {
-					this.plugin.settings.maxTokens = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('maxTokens', value);
 				}
 			}
 		);
@@ -207,10 +167,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setName('Temperature')
 				.setDesc('Controls randomness in the response (0 = deterministic, 1 = very random) 0.7 is recommended for most models'),
 			{
-				min: 0, max: 1, step: 0.01, value: this.plugin.settings.temperature,
+				min: 0, max: 1, step: 0.01, value: settingsManager.getSetting('temperature'),
 				onChange: async (value) => {
-					this.plugin.settings.temperature = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('temperature', value);
 				},
 				format: (v) => v.toFixed(2)
 			}
@@ -228,11 +187,10 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				rows: '4'
 			}
 		});
-		systemPromptTextArea.value = this.plugin.settings.systemPrompt;
+		systemPromptTextArea.value = settingsManager.getSetting('systemPrompt');
 		
 		systemPromptTextArea.addEventListener('input', async () => {
-			this.plugin.settings.systemPrompt = systemPromptTextArea.value;
-			await this.plugin.saveSettings();
+			await settingsManager.setSetting('systemPrompt', systemPromptTextArea.value);
 		});
 
 		new Setting(containerEl).setName('Search').setHeading();
@@ -242,10 +200,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setName('Max search results')
 				.setDesc('Maximum number of notes to include as context'),
 			{
-				min: 1, max: 10, step: 1, value: this.plugin.settings.searchMaxResults,
+				min: 1, max: 10, step: 1, value: settingsManager.getSetting('searchMaxResults'),
 				onChange: async (value) => {
-					this.plugin.settings.searchMaxResults = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('searchMaxResults', value);
 				}
 			}
 		);
@@ -255,10 +212,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setName('Context percentage from search')
 				.setDesc('Percentage of max tokens to use for search context (50% = 2000 tokens if max tokens is 4000)'),
 			{
-				min: 10, max: 80, step: 5, value: this.plugin.settings.searchContextPercentage,
+				min: 10, max: 80, step: 5, value: settingsManager.getSetting('searchContextPercentage'),
 				onChange: async (value) => {
-					this.plugin.settings.searchContextPercentage = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('searchContextPercentage', value);
 				},
 				format: (v) => v + '%'
 			}
@@ -269,10 +225,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setName('Search relevance threshold')
 				.setDesc('Minimum relevance score for notes to be included (0 = include all, 1 = very strict)'),
 			{
-				min: 0, max: 1, step: 0.1, value: this.plugin.settings.searchThreshold,
+				min: 0, max: 1, step: 0.1, value: settingsManager.getSetting('searchThreshold'),
 				onChange: async (value) => {
-					this.plugin.settings.searchThreshold = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('searchThreshold', value);
 				},
 				format: (v) => v.toFixed(2)
 			}
@@ -285,10 +240,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setName('Enable developer logging')
 			.setDesc('Enable additional logging for debugging')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableDeveloperLogging)
+				.setValue(settingsManager.getSetting('enableDeveloperLogging'))
 				.onChange(async (value) => {
-					this.plugin.settings.enableDeveloperLogging = value;
-					await this.plugin.saveSettings();
+					await settingsManager.setSetting('enableDeveloperLogging', value);
 				}));
 
 		// Add connection test button
@@ -304,11 +258,12 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			try {
 				// Create a temporary LLM service to test
 				const { createLLMService } = await import('./LLMService');
+				const settings = settingsManager.getSettings();
 				const llmService = createLLMService({
-					apiEndpoint: this.plugin.settings.apiEndpoint,
-					maxTokens: this.plugin.settings.maxTokens,
-					temperature: this.plugin.settings.temperature,
-					systemPrompt: this.plugin.settings.systemPrompt
+					apiEndpoint: settings.apiEndpoint,
+					maxTokens: settings.maxTokens,
+					temperature: settings.temperature,
+					systemPrompt: settings.systemPrompt
 				});
 
 				// Validate config first
