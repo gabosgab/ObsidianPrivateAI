@@ -22,7 +22,7 @@ export default class LocalLLMPlugin extends Plugin {
 		);
 
 		// Add ribbon icon to open chat
-		this.addRibbonIcon('bot-message-square', 'Open Private AI', () => {
+		this.addRibbonIcon('bot-message-square', 'Open private AI', () => {
 			this.activateView();
 		});
 
@@ -130,10 +130,10 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setName('Default context mode')
 			.setDesc('The default context mode to use when opening a new chat')
 			.addDropdown(dropdown => dropdown
-				.addOption('open-notes', 'Open Tabs')
-				.addOption('search', 'Search Vault')
-				.addOption('last-7-days', 'Last 7 Days')
-				.addOption('none', 'No Context')
+				.addOption('open-notes', 'Open tabs')
+				.addOption('search', 'Search vault')
+				.addOption('last-7-days', 'Last 7 days')
+				.addOption('none', 'No context')
 				.setValue(settingsManager.getSetting('contextMode'))
 				.onChange(async (value) => {
 					await settingsManager.setSetting('contextMode', value as 'open-notes' | 'search' | 'last-7-days' | 'none');
@@ -247,7 +247,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Add connection test button
 		const testButton = containerEl.createEl('button', {
-			text: 'Test Connection',
+			text: 'Test connection',
 			cls: 'mod-cta'
 		});
 
@@ -277,7 +277,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				
 				if (result.success) {
 					new Notice('✅ Connection successful! Your LLM server is working.');
-					testButton.setText('Test Connection');
+					testButton.setText('Test connection');
 					testButton.disabled = false;
 				} else {
 					throw new Error(result.error || 'Unknown connection error');
@@ -285,7 +285,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			} catch (error) {
 				LoggingUtility.error('Connection test failed:', error);
 				new Notice(`❌ Connection failed: ${error.message}`);
-				testButton.setText('Test Connection');
+				testButton.setText('Test connection');
 				testButton.disabled = false;
 			}
 		});
@@ -296,12 +296,12 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Add report problem button
 		const reportButton = containerEl.createEl('button', {
-			text: 'Report a Problem',
+			text: 'Report a problem',
 			cls: 'mod-cta'
 		});
 
 		// Add version display
-		containerEl.createEl('p', { text: `Private AI Version ${manifest.version}` })
+		containerEl.createEl('p', { text: `Private AI version ${manifest.version}` })
 
 		reportButton.addEventListener('click', () => {
 			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new?template=bug_report.md', '_blank');

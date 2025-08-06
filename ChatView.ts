@@ -74,7 +74,7 @@ export class ChatView extends ItemView {
 
 		// Header with title and settings button
 		const header = container.createEl('div', { cls: 'local-llm-chat-header' });
-		header.createEl('h4', { text: 'Private AI Chat' });
+		header.createEl('h4', { text: 'Private AI chat' });
 		
 		// Create button container for header buttons
 		const headerButtons = header.createEl('div', { cls: 'local-llm-header-buttons' });
@@ -82,7 +82,7 @@ export class ChatView extends ItemView {
 		// Create new chat button
 		const newChatButton = headerButtons.createEl('button', {
 			cls: 'local-llm-new-chat-button',
-			text: 'New Chat',
+			text: 'New chat',
 			attr: { 'aria-label': 'Start new chat', 'type': 'button' }
 		});
 		newChatButton.addEventListener('click', async () => {
@@ -100,9 +100,9 @@ export class ChatView extends ItemView {
 		});
 		
 		this.contextModeDropdown = new DropdownComponent(contextModeContainer)
-			.addOption('open-notes', 'Open Tabs')
+			.addOption('open-notes', 'Open tabs')
 			.addOption('search', 'Search')
-			.addOption('last-7-days', 'Last 7 Days')
+			.addOption('last-7-days', 'Last 7 days')
 			.addOption('none', 'None')
 			.onChange(async (value) => {
 				this.contextMode = value as 'search' | 'open-notes' | 'last-7-days' | 'none';
@@ -567,7 +567,7 @@ export class ChatView extends ItemView {
 			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI!')) {
 				const refreshButton = messageEl.createEl('button', {
 					cls: 'local-llm-refresh-button',
-					text: '🔄 Test Connection',
+					text: '🔄 Test connection',
 					attr: { 'aria-label': 'Test connection to LLM server', 'type': 'button' }
 				});
 				
@@ -598,13 +598,13 @@ export class ChatView extends ItemView {
 						} else {
 							// Connection failed
 							new Notice('❌ Connection failed. Please check your server settings.', 3000);
-							refreshButton.textContent = '🔄 Test Connection';
+							refreshButton.textContent = '🔄 Test connection';
 							refreshButton.disabled = false;
 						}
 					} catch (error) {
 						LoggingUtility.error('Error testing connection:', error);
 						new Notice('❌ Connection failed. Please check your server settings.', 3000);
-						refreshButton.textContent = '🔄 Test Connection';
+						refreshButton.textContent = '🔄 Test connection';
 						refreshButton.disabled = false;
 					}
 				});
