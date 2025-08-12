@@ -370,11 +370,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		);
 
-		containerEl.createEl('h4', { text: 'All Notes Search' });
+		new Setting(containerEl).setName('All Notes Search').setHeading();
 
 		const ragStats = this.plugin.ragService.getStats();
-		containerEl.createEl('p', { text: `<li><ul>Documents indexed: ${ragStats.documentCount}</ul></li> | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB` })
-
 		new Setting(containerEl)
 			.setName('RAG database status')
 			.setDesc(`Documents indexed: ${ragStats.documentCount} | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB`);

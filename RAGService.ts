@@ -103,9 +103,6 @@ export class RAGService {
 					}
 				} else {
 					LoggingUtility.log('Existing installation detected, running smart update...');
-					if (!this.initOptions.silentMode) {
-						new Notice('Checking for file changes and updating RAG database...');
-					}
 					
 					if (this.initOptions.backgroundIndexing) {
 						// Run in background without blocking initialization
@@ -835,7 +832,6 @@ export class RAGService {
 			
 			const stats = this.vectorDB.getStats();
 			LoggingUtility.log(`Indexing complete. Updated ${filesToUpdate.length} files with ${processedChunks} total chunks. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
-			new Notice(`RAG indexing complete: Updated ${filesToUpdate.length} files with ${processedChunks} chunks`);
 			
 		} catch (error) {
 			LoggingUtility.error('Error during indexing:', error);
