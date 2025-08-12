@@ -390,9 +390,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						this.updateStatusDisplay(containerEl, newStats);
 						
 						// Notify chat views that indexing is complete
-						this.plugin.notifyChatViewsOfRAGComplete();
-						
-						new Notice('RAG database updated successfully!');
+						this.plugin.notifyChatViewsOfRAGComplete();						
 					} catch (error) {
 						LoggingUtility.error('RAG update failed:', error);
 						new Notice(`RAG database update failed: ${error.message}`);
