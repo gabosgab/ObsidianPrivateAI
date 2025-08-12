@@ -4,6 +4,8 @@ import { LoggingUtility } from './LoggingUtility';
 import { SearchResult } from './SearchService';
 import { EmbeddingService, EmbeddingConfig } from './EmbeddingService';
 import * as CRC32 from 'crc-32';
+import * as path from 'path';
+
 
 export interface RAGSearchResult {
 	file: TFile;
@@ -57,7 +59,9 @@ export class RAGService {
 	
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
-		const indexPath = this.app.vault.configDir + '/plugins/ObsidianPrivateAI/vector-index/embeddings.json';
+		//const indexPath = this.app.vault.configDir + '/plugins/ObsidianPrivateAI/vector-index/embeddings.json';
+		const indexPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/embeddings.json`;
+		LoggingUtility.log('RAGService constructor called with indexPath:', path.resolve(indexPath));
 		this.vectorDB = new VectorDatabase(this.app, indexPath);
 		this.embeddingService = new EmbeddingService(embeddingConfig);
 		this.initOptions = {

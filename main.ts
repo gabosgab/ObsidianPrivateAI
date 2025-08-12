@@ -521,7 +521,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					}
 				}));
 
-		containerEl.createEl('h4', { text: 'Support' });
+		new Setting(containerEl).setName('Support').setHeading();
 
 		// Add developer logging setting
 		new Setting(containerEl)
