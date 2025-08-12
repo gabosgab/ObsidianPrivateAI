@@ -90,9 +90,6 @@ export class RAGService {
 				
 				if (isFreshInstall) {
 					LoggingUtility.log('Fresh install detected, starting automatic index rebuild...');
-					if (!this.initOptions.silentMode) {
-						new Notice('Fresh install detected. Building RAG database for the first time...');
-					}
 					
 					if (this.initOptions.backgroundIndexing) {
 						// Run in background without blocking initialization
@@ -946,7 +943,6 @@ export class RAGService {
 			
 			const stats = this.vectorDB.getStats();
 			LoggingUtility.log(`Complete rebuild finished. Indexed ${processedChunks} total chunks across ${files.length} files. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
-			new Notice(`RAG complete rebuild finished: ${files.length} files with ${processedChunks} chunks indexed`);
 			
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);

@@ -33,10 +33,6 @@ interface LocalLLMSettings {
 	// Embedding settings
 	embeddingEndpoint: string;
 	embeddingModel: string;
-	// RAG Auto-maintenance settings (always enabled)
-	ragAutoMaintenance: boolean;
-	ragBackgroundIndexing: boolean;
-	ragSilentMode: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -58,11 +54,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	ragMaxResults: 10,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
-	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
-	// RAG Auto-maintenance settings (always enabled)
-	ragAutoMaintenance: true,
-	ragBackgroundIndexing: true,
-	ragSilentMode: false
+	embeddingModel: 'text-embedding-nomic-embed-text-v1.5'
 };
 
 export default class LocalLLMPlugin extends Plugin {
@@ -82,9 +74,9 @@ export default class LocalLLMPlugin extends Plugin {
 			endpoint: this.settings.embeddingEndpoint,
 			model: this.settings.embeddingModel
 		}, {
-			autoMaintenance: this.settings.ragAutoMaintenance,
-			backgroundIndexing: this.settings.ragBackgroundIndexing,
-			silentMode: this.settings.ragSilentMode,
+			autoMaintenance: true,
+			backgroundIndexing: true,
+			silentMode: false,
 			progressCallback: (current, total, message) => {
 				this.notifyChatViewsOfRAGProgress(current, total, message);
 			},
@@ -494,34 +486,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Auto-maintenance settings
-		new Setting(containerEl)
-			.setName('Enable automatic maintenance')
-			.setDesc('RAG auto-maintenance is always enabled to keep the database up to date')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.ragAutoMaintenance)
-				.setDisabled(true));
 
-		new Setting(containerEl)
-			.setName('Background indexing')
-			.setDesc('RAG background indexing is always enabled to avoid blocking Obsidian startup')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.ragBackgroundIndexing)
-				.setDisabled(true));
-
-		new Setting(containerEl)
-			.setName('Silent auto-maintenance')
-			.setDesc('RAG silent mode setting - controls whether maintenance operations show notices')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.ragSilentMode)
-				.onChange(async (value) => {
-					this.plugin.settings.ragSilentMode = value;
-					await this.plugin.saveSettings();
-					// Update the RAG service initialization options
-					this.plugin.ragService.updateInitializationOptions({
-						silentMode: value
-					});
-				}));
 
 		// Test embedding connection button
 		new Setting(containerEl)
