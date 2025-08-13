@@ -37,51 +37,22 @@ export class RAGProgressDialog {
 			cls: 'rag-progress-floating-dialog'
 		});
 
-		// Set initial position and styles
-		this.containerEl.style.cssText = `
-			position: fixed;
-			top: 20px;
-			right: 20px;
-			width: 350px;
-			background: var(--background-primary);
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 8px;
-			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-			z-index: 1000;
-			padding: 16px;
-			font-family: var(--font-interface);
-		`;
-
 		// Title with drag handle
 		const titleEl = this.containerEl.createEl('div', {
 			cls: 'rag-progress-title',
 			text: 'Building Semantic Search Index'
 		});
-		titleEl.style.cssText = `
-			font-size: 16px;
-			font-weight: 600;
-			margin-bottom: 12px;
-			cursor: move;
-			user-select: none;
-			color: var(--text-normal);
-		`;
 
 		// Message
 		this.messageEl = this.containerEl.createEl('div', {
 			text: 'Preparing...',
 			cls: 'rag-progress-message'
 		});
-		this.messageEl.style.cssText = `
-			margin-bottom: 12px;
-			font-size: 14px;
-			color: var(--text-muted);
-		`;
 
 		// Progress bar container
 		const progressContainer = this.containerEl.createEl('div', {
 			cls: 'rag-progress-container'
 		});
-		progressContainer.style.marginBottom = '16px';
 
 		// Create progress bar
 		this.progressBar = new ProgressBarComponent(progressContainer);
@@ -91,11 +62,6 @@ export class RAGProgressDialog {
 		const buttonContainer = this.containerEl.createEl('div', {
 			cls: 'rag-progress-buttons'
 		});
-		buttonContainer.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			gap: 8px;
-		`;
 
 		// Cancel button
 		this.cancelButton = buttonContainer.createEl('button', {
@@ -136,42 +102,18 @@ export class RAGProgressDialog {
 			text: '−',
 			cls: 'rag-progress-minimize'
 		});
-		minimizeBtn.style.cssText = `
-			float: right;
-			cursor: pointer;
-			width: 20px;
-			height: 20px;
-			text-align: center;
-			line-height: 18px;
-			border-radius: 3px;
-			font-weight: bold;
-			color: var(--text-muted);
-		`;
-		
-		minimizeBtn.addEventListener('mouseenter', () => {
-			minimizeBtn.style.backgroundColor = 'var(--background-modifier-hover)';
-		});
-		
-		minimizeBtn.addEventListener('mouseleave', () => {
-			minimizeBtn.style.backgroundColor = 'transparent';
-		});
 
 		let isMinimized = false;
 		minimizeBtn.addEventListener('click', (e) => {
 			e.stopPropagation();
 			isMinimized = !isMinimized;
 			
-			const content = this.containerEl.querySelector('.rag-progress-message')?.parentElement;
-			if (content) {
-				if (isMinimized) {
-					content.style.display = 'none';
-					minimizeBtn.textContent = '+';
-					this.containerEl.style.width = '200px';
-				} else {
-					content.style.display = 'block';
-					minimizeBtn.textContent = '−';
-					this.containerEl.style.width = '350px';
-				}
+			if (isMinimized) {
+				this.containerEl.classList.add('minimized');
+				minimizeBtn.textContent = '+';
+			} else {
+				this.containerEl.classList.remove('minimized');
+				minimizeBtn.textContent = '−';
 			}
 		});
 	}
@@ -217,15 +159,17 @@ export class RAGProgressDialog {
 			newX = Math.max(0, Math.min(newX, window.innerWidth - rect.width));
 			newY = Math.max(0, Math.min(newY, window.innerHeight - rect.height));
 			
-			this.containerEl.style.left = `${newX}px`;
-			this.containerEl.style.top = `${newY}px`;
-			this.containerEl.style.right = 'auto';
+			// Use CSS custom properties for positioning
+			this.containerEl.style.setProperty('--dialog-left', `${newX}px`);
+			this.containerEl.style.setProperty('--dialog-top', `${newY}px`);
+			this.containerEl.classList.add('dragging');
 			
 			e.preventDefault();
 		};
 
 		const onMouseUp = () => {
 			isDragging = false;
+			this.containerEl.classList.remove('dragging');
 		};
 
 		titleEl.addEventListener('mousedown', onMouseDown);
@@ -284,7 +228,7 @@ export class RAGProgressDialog {
 		
 		this.isComplete = true;
 		this.messageEl.setText(`Error: ${error}`);
-		this.messageEl.style.color = 'var(--text-error)';
+		this.messageEl.classList.add('error');
 		
 		// Hide cancel button, show close button
 		this.cancelButton.style.display = 'none';

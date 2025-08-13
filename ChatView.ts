@@ -240,7 +240,7 @@ export class ChatView extends ItemView {
 	}
 
 	updateLLMService(config: LLMConfig) {
-		LoggingUtility.log('Updating wLLM service with config:', config);
+		LoggingUtility.log('Updating LLM service with config:', config);
 		this.llmService = createLLMService({
 			apiEndpoint: config.apiEndpoint,
 			maxTokens: config.maxTokens,

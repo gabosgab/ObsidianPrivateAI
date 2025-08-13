@@ -667,6 +667,9 @@
 }
 .rag-progress-floating-dialog {
   position: fixed !important;
+  top: 20px;
+  right: 20px;
+  width: 350px;
   z-index: 1000;
   font-family: var(--font-interface);
   background: var(--background-primary);
@@ -675,6 +678,15 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(8px);
   transition: all 0.2s ease;
+  padding: 16px;
+  --dialog-left: auto;
+  --dialog-top: auto;
+}
+.rag-progress-floating-dialog.dragging {
+  right: auto;
+  left: var(--dialog-left);
+  top: var(--dialog-top);
+  transition: none;
 }
 .rag-progress-floating-dialog:hover {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
@@ -779,6 +791,15 @@
 }
 .theme-dark .rag-progress-floating-dialog:hover {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.rag-progress-floating-dialog.minimized {
+  width: 200px !important;
+}
+.rag-progress-floating-dialog.minimized .rag-progress-content {
+  display: none;
+}
+.rag-progress-message.error {
+  color: var(--text-error) !important;
 }
 .local-llm-rag-status-area {
   border-top: 1px solid var(--background-modifier-border);
