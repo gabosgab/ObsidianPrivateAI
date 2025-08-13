@@ -1,5 +1,6 @@
 import { App, TFile, CachedMetadata, getAllTags, MarkdownView } from 'obsidian';
 import { LoggingUtility } from './LoggingUtility';
+import { RAGService, RAGSearchResult } from './RAGService';
 
 export interface SearchResult {
 	file: TFile;
@@ -17,18 +18,61 @@ export interface SearchOptions {
 
 export class SearchService {
 	private app: App;
+	private ragService: RAGService | null = null;
 
-	constructor(app: App) {
+	constructor(app: App, ragService?: RAGService) {
 		this.app = app;
+		this.ragService = ragService || null;
 	}
 
 	/**
-	 * Search for relevant notes in the Obsidian vault
+	 * Set the RAG service instance
+	 */
+	setRAGService(ragService: RAGService): void {
+		this.ragService = ragService;
+	}
+
+	/**
+	 * Search for relevant notes using RAG (fallback to keyword search if RAG unavailable)
 	 */
 	async searchVault(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
 		LoggingUtility.log('Searching vault for:', query);
 		LoggingUtility.log('Search options:', options);
 
+		// Try RAG search first
+		if (this.ragService && !this.ragService.isIndexEmpty()) {
+			try {
+				const ragResults = await this.ragService.search(
+					query,
+					options.maxResults || 5,
+					options.threshold || 0.3
+				);
+
+				// Convert RAG results to SearchResult format
+				const searchResults = ragResults.map(result => ({
+					file: result.file,
+					content: result.content,
+					relevance: result.similarity,
+					title: result.title,
+					path: result.path
+				}));
+
+				LoggingUtility.log(`RAG search completed. Found ${searchResults.length} relevant notes.`);
+				return searchResults;
+			} catch (error) {
+				LoggingUtility.warn('RAG search failed, falling back to keyword search:', error);
+			}
+		}
+
+		// Fallback to keyword search if RAG is unavailable
+		LoggingUtility.log('Using keyword search fallback');
+		return await this.keywordSearchVault(query, options);
+	}
+
+	/**
+	 * Keyword search fallback (original implementation)
+	 */
+	private async keywordSearchVault(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
 		const files = this.app.vault.getMarkdownFiles();
 		LoggingUtility.log(`Found ${files.length} markdown files to search`);
 
@@ -50,7 +94,7 @@ export class SearchService {
 		const sortedResults = results.sort((a, b) => b.relevance - a.relevance);
 		const finalResults = sortedResults.slice(0, options.maxResults || 5);
 
-		LoggingUtility.log(`Search completed. Found ${finalResults.length} relevant notes out of ${results.length} total matches.`);
+		LoggingUtility.log(`Keyword search completed. Found ${finalResults.length} relevant notes out of ${results.length} total matches.`);
 		return finalResults;
 	}
 

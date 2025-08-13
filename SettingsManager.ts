@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import { LoggingUtility } from './LoggingUtility';
+import { ContextMode } from './main';
 
 export interface LocalLLMSettings {
 	apiEndpoint: string;
@@ -12,9 +13,16 @@ export interface LocalLLMSettings {
 	searchContextPercentage: number;
 	searchThreshold: number;
 	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'last-7-days' | 'none';
+	contextMode: ContextMode;
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
+	// RAG settings
+	enableRAG: boolean;
+	ragThreshold: number;
+	ragMaxResults: number;
+	// Embedding settings
+	embeddingEndpoint: string;
+	embeddingModel: string;
 }
 
 export const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -28,9 +36,16 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	searchContextPercentage: 50,
 	searchThreshold: 0.3,
 	// Default context mode
-	contextMode: 'open-notes',
+	contextMode: ContextMode.OPEN_NOTES,
 	// Default developer logging setting
-	enableDeveloperLogging: false
+	enableDeveloperLogging: false,
+	// RAG defaults
+	enableRAG: false,
+	ragThreshold: 0.5,
+	ragMaxResults: 5,
+	// Embedding defaults
+	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
+	embeddingModel: 'text-embedding-ada-002'
 };
 
 export class SettingsManager {

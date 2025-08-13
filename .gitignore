@@ -16,6 +16,7 @@ build/
 
 # Plugin data files
 data.json
+embeddings.json
 
 # IDE and Editor files
 .vscode/
@@ -172,5 +173,5 @@ temp/
 .yarn/install-state.gz
 .pnp.*
 
-
 embeddings.json
+vector-index/embeddings.json

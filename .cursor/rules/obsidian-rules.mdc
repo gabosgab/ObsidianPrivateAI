@@ -1,7 +1,8 @@
 ---
 alwaysApply: true
 ---
-Always follow the TypeScript coding conventions, if you run into code that doesn't follow the convention, convert it to match.
+
+Always follow the TypeScript and Obsidian Plugin coding conventions, if you run into code that doesn't follow the convention, convert it to match.
 
 Avoid using TypeScript Any data types unless absolutely required
 

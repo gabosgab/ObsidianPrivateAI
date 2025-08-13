@@ -1,11 +1,15 @@
 import LocalLLMPlugin from './main';
-import { SettingsManager } from './SettingsManager';
 
 export class LoggingUtility {
 	private static pluginReady: boolean = false;
+	private static developerLoggingEnabled: boolean = false;
 
 	static initialize() {
 		LoggingUtility.pluginReady = true;
+	}
+
+	static setDeveloperLoggingEnabled(enabled: boolean) {
+		LoggingUtility.developerLoggingEnabled = enabled;
 	}
 
 	static log(...args: any[]) {
@@ -34,13 +38,6 @@ export class LoggingUtility {
 			return false;
 		}
 
-		try {
-			// Try to get the settings from SettingsManager
-			const settingsManager = SettingsManager.getInstance();
-			return settingsManager.getSetting('enableDeveloperLogging');
-		} catch (error) {
-			// If SettingsManager is not initialized yet
-			return false;
-		}
+		return LoggingUtility.developerLoggingEnabled;
 	}
 } 
