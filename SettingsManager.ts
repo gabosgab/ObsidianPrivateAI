@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import { LoggingUtility } from './LoggingUtility';
+import { ContextMode } from './main';
 
 export interface LocalLLMSettings {
 	apiEndpoint: string;
@@ -12,7 +13,7 @@ export interface LocalLLMSettings {
 	searchContextPercentage: number;
 	searchThreshold: number;
 	// Context mode setting
-	contextMode: 'open-notes' | 'search' | 'rag' | 'none';
+	contextMode: ContextMode;
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
 	// RAG settings
@@ -35,7 +36,7 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	searchContextPercentage: 50,
 	searchThreshold: 0.3,
 	// Default context mode
-	contextMode: 'open-notes',
+	contextMode: ContextMode.OPEN_NOTES,
 	// Default developer logging setting
 	enableDeveloperLogging: false,
 	// RAG defaults
