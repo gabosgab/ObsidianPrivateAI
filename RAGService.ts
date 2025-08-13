@@ -3,6 +3,7 @@ import { VectorDatabase, ParagraphSearchResult, ParagraphDocument } from './Vect
 import { LoggingUtility } from './LoggingUtility';
 import { SearchResult } from './SearchService';
 import { EmbeddingService, EmbeddingConfig } from './EmbeddingService';
+import { ImageTextExtractor } from './ImageTextExtractor';
 import * as CRC32 from 'crc-32';
 import * as path from 'path';
 
@@ -43,6 +44,8 @@ export class RAGService {
 	private app: App;
 	private vectorDB: VectorDatabase;
 	private embeddingService: EmbeddingService;
+	private imageTextExtractor?: ImageTextExtractor;
+	private imageProcessingEnabled: boolean = true;
 	private fileChangeRef?: EventRef;
 	private fileRenameRef?: EventRef;
 	private fileDeleteRef?: EventRef;
@@ -69,6 +72,132 @@ export class RAGService {
 			silentMode: false,
 			...initOptions
 		};
+	}
+
+	/**
+	 * Initialize the image text extractor with LLM service
+	 */
+	initializeImageTextExtractor(llmService: any): void {
+		try {
+			this.imageTextExtractor = new ImageTextExtractor(llmService, this.app);
+			LoggingUtility.log('Image text extractor initialized');
+		} catch (error) {
+			LoggingUtility.warn('Failed to initialize image text extractor:', error);
+		}
+	}
+
+	/**
+	 * Set whether image processing is enabled
+	 */
+	setImageProcessingEnabled(enabled: boolean): void {
+		this.imageProcessingEnabled = enabled;
+		LoggingUtility.log(`Image processing ${enabled ? 'enabled' : 'disabled'}`);
+	}
+
+	/**
+	 * Manually trigger image processing for all images in the vault
+	 */
+	async processImagesManually(progressCallback?: (current: number, total: number, message: string) => void): Promise<void> {
+		if (!this.imageProcessingEnabled) {
+			throw new Error('Image processing is disabled in settings');
+		}
+
+		if (!this.imageTextExtractor) {
+			throw new Error('Image text extractor not initialized');
+		}
+
+		try {
+			// Get all image files in the vault
+			const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+			
+			if (imageFiles.length === 0) {
+				new Notice('No image files found in vault');
+				return;
+			}
+
+			LoggingUtility.log(`Starting manual image processing for ${imageFiles.length} images`);
+
+			// Check vision capabilities first
+			const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
+			if (!capabilities.supportsVision) {
+				throw new Error('LLM model does not support vision capabilities');
+			}
+
+			// Process each image with progress reporting
+			for (let i = 0; i < imageFiles.length; i++) {
+				const imageFile = imageFiles[i];
+				
+				if (progressCallback) {
+					progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
+				}
+				
+				try {
+					LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+					
+					// Extract text from image
+					const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+					
+					if (result.success && result.extractedText.trim()) {
+						// Create a virtual document for the extracted text
+						const extractedText = result.extractedText;
+						
+						// Split extracted text into chunks
+						const chunks = this.splitIntoParagraphs(extractedText);
+						
+						if (chunks.length > 0) {
+							// Generate embeddings for chunks
+							const texts = chunks.map(c => c.text);
+							const embeddings = await this.embeddingService.generateEmbeddings(texts);
+							
+							// Create chunk documents for the image
+							const chunkDocuments = chunks.map((chunk, index) => ({
+								id: `${imageFile.path}#c${chunk.index}`,
+								vector: embeddings[index],
+								metadata: {
+									filePath: imageFile.path,
+									fileName: imageFile.basename,
+									title: `Image: ${imageFile.basename}`,
+									paragraphIndex: chunk.index,
+									paragraphText: chunk.text,
+									fileChecksum: CRC32.str(extractedText).toString(16),
+									lastModified: imageFile.stat.mtime,
+									fileSize: imageFile.stat.size,
+									sourceType: 'image',
+									extractedText: true
+								}
+							}));
+							
+							// Store in vector database
+							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+							
+							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
+						}
+					} else {
+						LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+					}
+					
+					// Yield control periodically
+					if (i % 3 === 0) {
+						await new Promise(resolve => setTimeout(resolve, 0));
+					}
+					
+				} catch (error) {
+					LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+				}
+			}
+
+			// Save the updated index
+			await this.vectorDB.save();
+			
+			const stats = this.vectorDB.getStats();
+			LoggingUtility.log(`Manual image processing complete. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
+			
+			new Notice(`Image processing complete! Processed ${imageFiles.length} images.`);
+			
+		} catch (error) {
+			LoggingUtility.error('Error during manual image processing:', error);
+			throw error;
+		}
 	}
 
 	/**
@@ -396,6 +525,106 @@ export class RAGService {
 		}
 		
 		return finalChunks;
+	}
+
+	/**
+	 * Process images in the vault to extract text and add to the index
+	 */
+	async processImagesInVault(enabled: boolean = true): Promise<void> {
+		if (!enabled) {
+			LoggingUtility.log('Image text extraction is disabled, skipping image processing');
+			return;
+		}
+		
+		if (!this.imageTextExtractor) {
+			LoggingUtility.log('Image text extractor not initialized, skipping image processing');
+			return;
+		}
+
+		try {
+			// Get all image files in the vault
+			const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+			
+			if (imageFiles.length === 0) {
+				LoggingUtility.log('No image files found in vault');
+				return;
+			}
+
+			LoggingUtility.log(`Found ${imageFiles.length} image files to process`);
+
+			// Check vision capabilities first
+			const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
+			if (!capabilities.supportsVision) {
+				LoggingUtility.log('LLM model does not support vision, skipping image processing');
+				return;
+			}
+
+			// Process each image
+			for (let i = 0; i < imageFiles.length; i++) {
+				const imageFile = imageFiles[i];
+				
+				try {
+					LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+					
+					// Extract text from image
+					const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+					
+					if (result.success && result.extractedText.trim()) {
+						// Create a virtual document for the extracted text
+						const extractedText = result.extractedText;
+						
+						// Split extracted text into chunks
+						const chunks = this.splitIntoParagraphs(extractedText);
+						
+						if (chunks.length > 0) {
+							// Generate embeddings for chunks
+							const texts = chunks.map(c => c.text);
+							const embeddings = await this.embeddingService.generateEmbeddings(texts);
+							
+							// Create chunk documents for the image
+							const chunkDocuments = chunks.map((chunk, index) => ({
+								id: `${imageFile.path}#c${chunk.index}`,
+								vector: embeddings[index],
+								metadata: {
+									filePath: imageFile.path,
+									fileName: imageFile.basename,
+									title: `Image: ${imageFile.basename}`,
+									paragraphIndex: chunk.index,
+									paragraphText: chunk.text,
+									fileChecksum: CRC32.str(extractedText).toString(16),
+									lastModified: imageFile.stat.mtime,
+									fileSize: imageFile.stat.size,
+									sourceType: 'image',
+									extractedText: true
+								}
+							}));
+							
+							// Store in vector database
+							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+							
+							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
+						}
+					} else {
+						LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+					}
+					
+					// Yield control periodically
+					if (i % 5 === 0) {
+						await new Promise(resolve => setTimeout(resolve, 0));
+					}
+					
+				} catch (error) {
+					LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+				}
+			}
+
+			// Save the updated index
+			await this.vectorDB.save();
+			LoggingUtility.log('Image processing complete');
+			
+		} catch (error) {
+			LoggingUtility.error('Error processing images in vault:', error);
+		}
 	}
 
 	/**
@@ -870,6 +1099,12 @@ export class RAGService {
 			// Final save
 			await this.vectorDB.save();
 			
+			// Process images if image text extractor is available
+			if (this.imageTextExtractor) {
+				LoggingUtility.log('Starting image processing...');
+				await this.processImagesInVault(this.imageProcessingEnabled);
+			}
+			
 			const stats = this.vectorDB.getStats();
 			LoggingUtility.log(`Indexing complete. Updated ${filesToUpdate.length} files with ${processedChunks} total chunks. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);
 			
@@ -994,6 +1229,12 @@ export class RAGService {
 			
 			// Final save
 			await this.vectorDB.save();
+			
+			// Process images if image text extractor is available
+			if (this.imageTextExtractor) {
+				LoggingUtility.log('Starting image processing...');
+				await this.processImagesInVault(this.imageProcessingEnabled);
+			}
 			
 			const stats = this.vectorDB.getStats();
 			LoggingUtility.log(`Complete rebuild finished. Indexed ${processedChunks} total chunks across ${files.length} files. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files`);

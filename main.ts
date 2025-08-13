@@ -35,6 +35,8 @@ interface LocalLLMSettings {
 	// Embedding settings
 	embeddingEndpoint: string;
 	embeddingModel: string;
+	// Image processing settings
+	enableImageTextExtraction: boolean;
 	// Context notes visibility setting
 	contextNotesVisible: boolean;
 }
@@ -59,6 +61,8 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
+	// Image processing defaults
+	enableImageTextExtraction: true
 	// Default context notes visibility
 	contextNotesVisible: false
 };
@@ -66,6 +70,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 export default class LocalLLMPlugin extends Plugin {
 	settings: LocalLLMSettings;
 	ragService: RAGService;
+	private llmService: any; // LLMService instance for image processing
 
 	async onload() {
 		LoggingUtility.initialize();
@@ -74,6 +79,15 @@ export default class LocalLLMPlugin extends Plugin {
 		
 		// Set developer logging based on settings
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
+		
+		// Create LLM service for image processing
+		const { createLLMService } = await import('./LLMService');
+		this.llmService = createLLMService({
+			apiEndpoint: this.settings.apiEndpoint,
+			maxTokens: this.settings.maxTokens,
+			temperature: this.settings.temperature,
+			systemPrompt: this.settings.systemPrompt
+		});
 		
 		// Initialize RAG service (always enabled with auto-maintenance)
 		this.ragService = new RAGService(this.app, {
@@ -90,6 +104,13 @@ export default class LocalLLMPlugin extends Plugin {
 				this.notifyChatViewsOfRAGComplete();
 			}
 		});
+		
+		// Initialize image text extractor in RAG service
+		this.ragService.initializeImageTextExtractor(this.llmService);
+		
+		// Store the setting value for image processing
+		this.ragService.setImageProcessingEnabled(this.settings.enableImageTextExtraction);
+		
 		await this.ragService.initialize();
 		
 		// Always start file watcher since RAG is always enabled
@@ -137,6 +158,23 @@ export default class LocalLLMPlugin extends Plugin {
 		
 		// Update developer logging setting
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
+		
+		// Update LLM service config
+		if (this.llmService) {
+			const { createLLMService } = await import('./LLMService');
+			this.llmService = createLLMService({
+				apiEndpoint: this.settings.apiEndpoint,
+				maxTokens: this.settings.maxTokens,
+				temperature: this.settings.temperature,
+				systemPrompt: this.settings.systemPrompt
+			});
+			
+			// Re-initialize image text extractor with updated LLM service
+			if (this.ragService) {
+				this.ragService.initializeImageTextExtractor(this.llmService);
+				this.ragService.setImageProcessingEnabled(this.settings.enableImageTextExtraction);
+			}
+		}
 		
 		// Update RAG service embedding config
 		if (this.ragService) {
@@ -558,6 +596,50 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						new Notice(`❌ Embedding test failed: ${error.message}`);
 					} finally {
 						button.setButtonText('Test Embedding');
+						button.setDisabled(false);
+					}
+				}));
+
+		new Setting(containerEl).setName('Image Processing').setHeading();
+
+		// Image text extraction setting
+		new Setting(containerEl)
+			.setName('Enable image text extraction')
+			.setDesc('Extract text from images using vision-capable LLM models and add to the RAG index. Requires a vision model like LLaVA, GPT-4V, or similar.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableImageTextExtraction)
+				.onChange(async (value) => {
+					this.plugin.settings.enableImageTextExtraction = value;
+					this.plugin.ragService.setImageProcessingEnabled(value);
+					await this.plugin.saveSettings();
+				}));
+
+		// Manual image processing button
+		new Setting(containerEl)
+			.setName('Process images now')
+			.setDesc('Manually trigger image text extraction for all images in your vault. This will use your LLM to extract text and add it to the RAG index.')
+			.addButton(button => button
+				.setButtonText('Process Images')
+				.setCta()
+				.onClick(async () => {
+					button.setButtonText('Processing...');
+					button.setDisabled(true);
+					
+					try {
+						await this.plugin.ragService.processImagesManually((current, total, message) => {
+							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
+						});
+						
+						// Update stats display
+						const newStats = this.plugin.ragService.getStats();
+						this.updateStatusDisplay(containerEl, newStats);
+						
+						new Notice('Image processing completed successfully!');
+					} catch (error) {
+						LoggingUtility.error('Image processing failed:', error);
+						new Notice(`Image processing failed: ${error.message}`);
+					} finally {
+						button.setButtonText('Process Images');
 						button.setDisabled(false);
 					}
 				}));
