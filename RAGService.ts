@@ -1132,6 +1132,19 @@ export class RAGService {
 							try {
 								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 								
+								// Check if image has changed since last extraction by comparing checksum
+								const imageBinary = await this.app.vault.readBinary(imageFile);
+								const newImageChecksum = CRC32.buf(new Uint8Array(imageBinary)).toString(16);
+								
+								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
+								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
+									// Image content hasn't changed, skip extraction
+									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
+									continue;
+								}
+								
+								LoggingUtility.log(`Image content changed, extracting text: ${imageFile.path} (checksum: ${newImageChecksum})`);
+
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
 								
@@ -1167,6 +1180,10 @@ export class RAGService {
 										
 										// Store in vector database
 										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+										// Save periodically to avoid losing progress
+										if ((i + 1) % 2 === 0) {
+											await this.vectorDB.save();
+										}
 										
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 									}
