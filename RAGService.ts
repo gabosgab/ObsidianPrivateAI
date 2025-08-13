@@ -59,7 +59,6 @@ export class RAGService {
 	
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
-		//const indexPath = this.app.vault.configDir + '/plugins/ObsidianPrivateAI/vector-index/embeddings.json';
 		const indexPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/embeddings.json`;
 		LoggingUtility.log('RAGService constructor called with indexPath:', path.resolve(indexPath));
 		this.vectorDB = new VectorDatabase(this.app, indexPath);
