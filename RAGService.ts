@@ -253,16 +253,8 @@ export class RAGService {
 	private async detectFreshInstall(): Promise<boolean> {
 		try {
 			const stats = this.vectorDB.getStats();
-			
-			// Consider it fresh if:
-			// 1. No documents exist
-			// 2. Very few documents compared to markdown files (less than 10% coverage)
-			const markdownFiles = this.app.vault.getMarkdownFiles();
-			const coverageRatio = markdownFiles.length > 0 ? stats.fileCount / markdownFiles.length : 0;
-			
-			const isFresh = stats.documentCount === 0 || coverageRatio < 0.1;
-			
-			LoggingUtility.log(`Fresh install detection: ${stats.documentCount} documents, ${stats.fileCount} indexed files, ${markdownFiles.length} total markdown files, coverage: ${(coverageRatio * 100).toFixed(1)}%`);
+			const isFresh = stats.documentCount === 0;
+			LoggingUtility.log(`Fresh install detection: ${stats.documentCount} documents, ${stats.fileCount} indexed files`);
 			
 			return isFresh;
 		} catch (error) {
