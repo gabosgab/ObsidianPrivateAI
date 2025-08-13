@@ -13,6 +13,8 @@ export interface ParagraphDocument {
 		fileChecksum: string; // checksum of entire file
 		lastModified: number;
 		fileSize: number;
+		sourceType?: 'markdown' | 'image'; // type of source file
+		extractedText?: boolean; // whether text was extracted from image
 	};
 }
 
@@ -301,6 +303,13 @@ export class VectorDatabase {
 	 */
 	getFileDocuments(filePath: string): ParagraphDocument[] {
 		return this.index.documents.filter(doc => doc.metadata.filePath === filePath);
+	}
+
+	/**
+	 * Get all documents in the index
+	 */
+	getAllDocuments(): ParagraphDocument[] {
+		return [...this.index.documents];
 	}
 
 	/**
