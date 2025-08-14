@@ -148,6 +148,7 @@ export class RAGService {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
 							const embeddings = await this.embeddingService.generateEmbeddings(texts);
+							const checksum = await this.calculateCRC32(imageFile);
 							
 							// Create chunk documents for the image
 							const chunkDocuments = chunks.map((chunk, index) => ({
@@ -159,7 +160,7 @@ export class RAGService {
 									title: `Image: ${imageFile.basename}`,
 									paragraphIndex: chunk.index,
 									paragraphText: chunk.text,
-									fileChecksum: CRC32.buf(new TextEncoder().encode(extractedText)).toString(16),
+									fileChecksum: checksum,
 									lastModified: imageFile.stat.mtime,
 									fileSize: imageFile.stat.size,
 									sourceType: 'image' as const,
@@ -567,6 +568,7 @@ export class RAGService {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
 							const embeddings = await this.embeddingService.generateEmbeddings(texts);
+							const fileChecksum = await this.calculateCRC32(imageFile);
 							
 							// Create chunk documents for the image
 							const chunkDocuments = chunks.map((chunk, index) => ({
@@ -578,7 +580,7 @@ export class RAGService {
 									title: `Image: ${imageFile.basename}`,
 									paragraphIndex: chunk.index,
 									paragraphText: chunk.text,
-									fileChecksum: CRC32.str(extractedText).toString(16),
+									fileChecksum: fileChecksum,
 									lastModified: imageFile.stat.mtime,
 									fileSize: imageFile.stat.size,
 									sourceType: 'image' as const,
@@ -857,6 +859,11 @@ export class RAGService {
 		this.fileUpdateQueue.set(filePath, timeout);
 	}
 
+	private async calculateCRC32(file: TFile): Promise<string> {
+		const fileBinary = await this.app.vault.readBinary(file);
+		return CRC32.buf(new Uint8Array(fileBinary)).toString(16);
+	}
+
 	/**
 	 * Process file updates in background to avoid blocking UI
 	 */
@@ -875,10 +882,9 @@ export class RAGService {
 		try {
 			if (operation === 'modify') {
 				// Check if file actually changed by comparing checksum
-				const fileBinary = await this.app.vault.readBinary(file);
-				const newChecksum = CRC32.buf(new Uint8Array(fileBinary)).toString(16);
-				
+				const newChecksum = await this.calculateCRC32(file);
 				const existingDocs = this.vectorDB.getFileDocuments(file.path);
+
 				if (existingDocs.length > 0 && existingDocs[0].metadata.fileChecksum === newChecksum) {
 					// File content hasn't actually changed, skip update
 					LoggingUtility.log(`File modification detected but content unchanged: ${file.path}`);
@@ -921,7 +927,7 @@ export class RAGService {
 
 		try {
 			// Get all markdown files
-			const files = this.app.vault.getMarkdownFiles();
+			const files = this.app.vault.getFiles();
 			
 			LoggingUtility.log(`Starting to analyze ${files.length} markdown files for changes`);
 			
@@ -942,12 +948,9 @@ export class RAGService {
 				const file = files[i];
 				existingFiles.add(file.path);
 				
-				try {
-					const content = await this.app.vault.readBinary(file);
-					const checksum = CRC32.buf(new Uint8Array(content)).toString(16);
-					
+				try {					
 					fileStats.set(file.path, {
-						checksum: checksum,
+						checksum: await this.calculateCRC32(file),
 						lastModified: file.stat.mtime,
 						size: file.stat.size
 					});
@@ -1085,8 +1088,7 @@ export class RAGService {
 								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 								
 								// Check if image has changed since last extraction by comparing checksum
-								const imageBinary = await this.app.vault.readBinary(imageFile);
-								const newImageChecksum = CRC32.buf(new Uint8Array(imageBinary)).toString(16);
+								const newImageChecksum = await this.calculateCRC32(imageFile);
 								
 								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
 								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
@@ -1111,6 +1113,7 @@ export class RAGService {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
 										const embeddings = await this.embeddingService.generateEmbeddings(texts);
+										const fileChecksum = await this.calculateCRC32(imageFile);
 										
 										// Create chunk documents for the image
 										const chunkDocuments = chunks.map((chunk, index) => ({
@@ -1122,7 +1125,7 @@ export class RAGService {
 												title: `Image: ${imageFile.basename}`,
 												paragraphIndex: chunk.index,
 												paragraphText: chunk.text,
-												fileChecksum: CRC32.str(extractedText).toString(16),
+												fileChecksum: fileChecksum,
 												lastModified: imageFile.stat.mtime,
 												fileSize: imageFile.stat.size,
 												sourceType: 'image' as const,
@@ -1327,7 +1330,7 @@ export class RAGService {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
 										const embeddings = await this.embeddingService.generateEmbeddings(texts);
-										const imageBinary = await imageFile.vault.readBinary(imageFile);
+										const checksum = await this.calculateCRC32(imageFile);
 
 										// Create chunk documents for the image
 										const chunkDocuments = chunks.map((chunk, index) => ({
@@ -1339,7 +1342,7 @@ export class RAGService {
 												title: `Image: ${imageFile.basename}`,
 												paragraphIndex: chunk.index,
 												paragraphText: chunk.text,
-												fileChecksum: CRC32.buf(new Uint8Array(imageBinary)).toString(16),
+												fileChecksum: checksum,
 												lastModified: imageFile.stat.mtime,
 												fileSize: imageFile.stat.size,
 												sourceType: 'image' as const,
@@ -1418,12 +1421,11 @@ export class RAGService {
 	private async updateFileEmbeddings(file: TFile): Promise<void> {
 		try {
 			const content = await this.app.vault.read(file);
-			const binaryContent = await this.app.vault.readBinary(file);
 			const metadata = this.app.metadataCache.getFileCache(file);
 			const title = this.getFileTitle(file, metadata);
 			
 			// Calculate checksum from binary content
-			const checksum = CRC32.buf(new Uint8Array(binaryContent)).toString(16);
+			const checksum = await this.calculateCRC32(file);
 			
 			// Split content into chunks
 			const chunks = this.splitIntoParagraphs(content);
@@ -1476,12 +1478,11 @@ export class RAGService {
 	private async updateFileEmbeddingsWithProgress(file: TFile, progressCallback?: (chunkIndex: number, totalChunks: number) => void): Promise<void> {
 		try {
 			const content = await this.app.vault.read(file);
-			const binaryContent = await this.app.vault.readBinary(file);
 			const metadata = this.app.metadataCache.getFileCache(file);
 			const title = this.getFileTitle(file, metadata);
 			
 			// Calculate checksum from binary content
-			const checksum = CRC32.buf(new Uint8Array(binaryContent)).toString(16);
+			const checksum = await this.calculateCRC32(file);
 			
 			// Split content into chunks
 			const chunks = this.splitIntoParagraphs(content);
