@@ -6,13 +6,10 @@ export interface ParagraphDocument {
 	vector: number[];
 	metadata: {
 		filePath: string;
-		fileName: string;
 		title: string;
 		paragraphIndex: number;
 		paragraphText: string; // store the actual paragraph text for retrieval
 		fileChecksum: string; // checksum of entire file
-		lastModified: number;
-		fileSize: number;
 		sourceType?: 'markdown' | 'image'; // type of source file
 		extractedText?: boolean; // whether text was extracted from image
 	};
@@ -324,9 +321,7 @@ export class VectorDatabase {
 
 		// Check if any of the key properties have changed
 		const firstDoc = fileDocuments[0];
-		return firstDoc.metadata.fileChecksum !== checksum ||
-			   firstDoc.metadata.lastModified !== lastModified ||
-			   firstDoc.metadata.fileSize !== size;
+		return firstDoc.metadata.fileChecksum !== checksum
 	}
 
 	/**
