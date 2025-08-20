@@ -330,31 +330,45 @@ export class LLMService {
 
 	// Helper method to test connection
 	async testConnection(): Promise<{ success: boolean; error?: string }> {
-		const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
-		
 		try {
-			LoggingUtility.log('Testing connection to:', modelsEndpoint);
+			LoggingUtility.log('Testing connection to:', this.config.apiEndpoint);
 			
-			const headers: Record<string, string> = {
-				'Content-Type': 'application/json',
+			// Create a simple test request asking for a smiley face
+			const testRequest: ChatRequest = {
+				messages: [{ role: 'user', content: 'Return a smiley face' }],
+				max_tokens: 10,
+				temperature: 0.1,
+				stream: false
 			};
 			
-			const response = await requestUrl({
-				url: modelsEndpoint,
-				method: 'GET',
-				headers
-			});
-
-			if (response.status >= 400) {
-				throw new Error(`Connection test failed: ${response.status}`);
+			const response = await this.makeAPIRequest(testRequest);
+			
+			// Log the actual response structure for debugging
+			LoggingUtility.log('Connection test - full response structure:', JSON.stringify(response, null, 2));
+			
+			// Verify we got a response with content
+			if (!response.choices || response.choices.length === 0) {
+				throw new Error(`Invalid response structure from API - no choices array. Response: ${JSON.stringify(response)}`);
+			}
+			
+			const firstChoice = response.choices[0];
+			if (!firstChoice.message) {
+				throw new Error(`Invalid response structure from API - no message in choice. Choice: ${JSON.stringify(firstChoice)}`);
+			}
+			
+			// Some APIs might return empty content, which is still a valid connection
+			const content = firstChoice.message.content;
+			if (content === null || content === undefined) {
+				LoggingUtility.warn('API returned null/undefined content, but connection appears successful');
 			}
 
+			LoggingUtility.log('Connection test successful, received response:', content);
 			return { success: true };
 		} catch (error) {
 			LoggingUtility.error('Connection test failed:', error);
 			return { 
 				success: false, 
-				error: getLLMErrorMessage(error, modelsEndpoint)
+				error: getLLMErrorMessage(error, this.config.apiEndpoint)
 			};
 		}
 	}
