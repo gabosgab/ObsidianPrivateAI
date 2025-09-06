@@ -164,7 +164,12 @@ export class RAGService {
 			} catch (error) {
 				LoggingUtility.error(`Background maintenance (${operation}) failed:`, error);
 				if (!this.initOptions.silentMode) {
-					new Notice(`RAG database ${operation} failed: ${error.message}`);
+					// Check if it's a connection error and show appropriate message
+					if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+						new Notice(`RAG database ${operation} failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.`, 10000);
+					} else {
+						new Notice(`RAG database ${operation} failed: ${error.message}`, 8000);
+					}
 				}
 			}
 		}, 100); // Small delay to ensure UI is ready
@@ -686,6 +691,35 @@ export class RAGService {
 	}
 
 	/**
+	 * Verify and wait for embedding service connection before proceeding
+	 */
+	private async ensureEmbeddingConnection(): Promise<void> {
+		const maxRetries = 10;
+		const retryDelay = 2000; // 2 seconds between retries
+		
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			LoggingUtility.log(`Verifying embedding service connection (attempt ${attempt}/${maxRetries})...`);
+			
+			const connectionTest = await this.testEmbeddingConnection();
+			
+			if (connectionTest.success) {
+				LoggingUtility.log(`Embedding service connection verified successfully (${connectionTest.dimensions} dimensions)`);
+				return;
+			}
+			
+			LoggingUtility.warn(`Connection attempt ${attempt} failed: ${connectionTest.error}`);
+			
+			if (attempt === maxRetries) {
+				throw new Error(`Could not establish connection to LM Studio after ${maxRetries} attempts. Please ensure LM Studio is running and the embedding model is loaded. Last error: ${connectionTest.error}`);
+			}
+			
+			// Wait before next retry
+			LoggingUtility.log(`Waiting ${retryDelay}ms before next connection attempt...`);
+			await new Promise(resolve => setTimeout(resolve, retryDelay));
+		}
+	}
+
+	/**
 	 * Build or rebuild the entire RAG database (smart update based on checksums)
 	 */
 	async buildIndex(progressCallback?: ProgressCallback): Promise<void> {
@@ -699,6 +733,12 @@ export class RAGService {
 		this.indexingAbortController = new AbortController();
 
 		try {
+			// Verify embedding service connection before proceeding
+			if (this.progressCallback) {
+				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
+			}
+			await this.ensureEmbeddingConnection();
+			
 			// Get all markdown files
 			const files = this.app.vault.getMarkdownFiles();
 			
@@ -835,7 +875,12 @@ export class RAGService {
 			
 		} catch (error) {
 			LoggingUtility.error('Error during indexing:', error);
-			new Notice('Error during RAG indexing: ' + error.message);
+			// Check if it's a connection error and show appropriate message
+			if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+				new Notice('RAG indexing failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.', 10000);
+			} else {
+				new Notice('Error during RAG indexing: ' + error.message, 8000);
+			}
 		} finally {
 			this.isIndexing = false;
 			this.progressCallback = undefined;
@@ -866,6 +911,12 @@ export class RAGService {
 		this.indexingAbortController = new AbortController();
 
 		try {
+			// Verify embedding service connection before proceeding
+			if (this.progressCallback) {
+				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
+			}
+			await this.ensureEmbeddingConnection();
+			
 			// Clear existing index completely
 			await this.vectorDB.clear();
 			LoggingUtility.log('Cleared existing vector index for complete rebuild');
@@ -949,7 +1000,12 @@ export class RAGService {
 			
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);
-			new Notice('Error during RAG complete rebuild: ' + error.message);
+			// Check if it's a connection error and show appropriate message
+			if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+				new Notice('RAG complete rebuild failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.', 10000);
+			} else {
+				new Notice('Error during RAG complete rebuild: ' + error.message, 8000);
+			}
 		} finally {
 			this.isIndexing = false;
 			this.progressCallback = undefined;
