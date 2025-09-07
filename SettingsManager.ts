@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	ragMaxResults: 5,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
-	embeddingModel: 'text-embedding-embeddinggemma-300m'
+	embeddingModel: 'text-embedding-ada-002'
 };
 
 export class SettingsManager {
