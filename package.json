@@ -1,13 +1,13 @@
 {
   "name": "private-ai",
-  "version": "1.0.36",
+  "version": "1.0.37",
   "description": "Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "version": "node version-bump.mjs",
-    "release": "node version-bump.mjs"
+    "release": "npm run build && node version-bump.mjs"
   },
   "keywords": [
     "obsidian",
