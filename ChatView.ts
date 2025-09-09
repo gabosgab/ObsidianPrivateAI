@@ -765,6 +765,7 @@ It looks like your local LLM server isn't running yet. Here's how to get started
 	   * Select the largest parameter size that LM Studio says can fit on your GPU
 4. **Load the model** in LM Studio
    * Once the model is downloaded, select the model in the top center toolbar to load it
+   * **IMPORTANT**: *Do not load more than one LLM model at a time, it will cause connection failed errors*
 5. **Start the local server**:
 - Click the "Developer" tab on the left
 - Click Settings:
