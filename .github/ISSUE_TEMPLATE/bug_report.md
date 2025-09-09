@@ -26,6 +26,7 @@ If applicable, add screenshots to help explain your problem.
 **Desktop (please complete the following information):**
  - OS: [e.g. iOS]
  - Obsidian Version: 
+ - Private AI Version:
  - LM Studio Version:
 
 **Additional context**
