@@ -19,6 +19,8 @@ interface LocalLLMSettings {
 	temperature: number;
 	// System prompt setting
 	systemPrompt: string;
+	// Model setting (optional - if not set, no model will be sent in payload)
+	model?: string;
 	// Search settings
 	searchMaxResults: number;
 	searchContextPercentage: number;
@@ -272,6 +274,41 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					this.plugin.settings.apiEndpoint = value;
 					await this.plugin.saveSettings();
 				}));
+
+		// Model dropdown setting
+		const modelSetting = new Setting(containerEl)
+			.setName('Model')
+			.setDesc('Select a specific model to use. (Loaded from LM Studio downloaded models.)')
+			.addDropdown(dropdown => {
+				// Add empty option for no model selection
+				dropdown.addOption('', 'Auto (server chooses)');
+				
+				// Set current value from saved settings
+				const savedModel = this.plugin.settings.model || '';
+				dropdown.setValue(savedModel);
+				
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.model = value === '' ? undefined : value;
+					await this.plugin.saveSettings();
+				});
+				
+				// Store reference to dropdown for dynamic updates
+				(this as any).modelDropdown = dropdown;
+			});
+
+		// Add refresh models button
+		modelSetting.addButton(button => button
+			.setButtonText('Refresh Models')
+			.setTooltip('Load available models from LM Studio')
+			.onClick(async () => {
+				await this.loadAvailableModels();
+			}));
+
+		// Load models automatically when settings are displayed
+		// Use setTimeout to ensure the dropdown is fully initialized first
+		setTimeout(() => {
+			this.loadAvailableModels();
+		}, 0);
 
 		addStyledSlider(
 			new Setting(containerEl)
@@ -551,7 +588,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					apiEndpoint: this.plugin.settings.apiEndpoint,
 					maxTokens: this.plugin.settings.maxTokens,
 					temperature: this.plugin.settings.temperature,
-					systemPrompt: this.plugin.settings.systemPrompt
+					systemPrompt: this.plugin.settings.systemPrompt,
+					model: this.plugin.settings.model
 				});
 
 				// Validate config first
@@ -594,6 +632,69 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		reportButton.addEventListener('click', () => {
 			window.open('https://github.com/gabosgab/ObsidianPrivateAI/issues/new?template=bug_report.md', '_blank');
 		});
+	}
+
+	/**
+	 * Load available models from the LM Studio /v1/models endpoint
+	 */
+	private async loadAvailableModels(): Promise<void> {
+		const dropdown = (this as any).modelDropdown;
+		if (!dropdown) return;
+
+		try {
+			// Show loading state
+			const savedModel = this.plugin.settings.model || '';
+			dropdown.selectEl.disabled = true;
+			dropdown.selectEl.innerHTML = '<option value="">Loading models...</option>';
+
+			// Create a temporary LLM service to fetch models
+			const { createLLMService } = await import('./LLMService');
+			const llmService = createLLMService({
+				apiEndpoint: this.plugin.settings.apiEndpoint
+			});
+
+			// Fetch available models
+			const models = await llmService.getAvailableModels();
+			
+			// Clear dropdown and add default option
+			dropdown.selectEl.innerHTML = '';
+			dropdown.addOption('', 'Auto (server chooses)');
+			
+			// Add available models
+			if (models.length > 0) {
+				models.forEach(model => {
+					dropdown.addOption(model, model);
+				});
+			} else {
+				dropdown.addOption('', 'No models available');
+			}
+
+			// Restore saved selection if it still exists
+			if (savedModel && models.includes(savedModel)) {
+				dropdown.setValue(savedModel);
+			} else {
+				dropdown.setValue('');
+			}
+
+			// Re-enable dropdown
+			dropdown.selectEl.disabled = false;
+
+		} catch (error) {
+			LoggingUtility.error('Failed to load available models:', error);
+			
+			// Show error state
+			dropdown.selectEl.innerHTML = '';
+			dropdown.addOption('', 'Auto (server chooses)');
+			dropdown.addOption('', 'Failed to load models');
+			
+			// Restore saved model even in error state
+			const savedModel = this.plugin.settings.model || '';
+			dropdown.setValue(savedModel);
+			dropdown.selectEl.disabled = false;
+			
+			// Show notice to user
+			new Notice('Failed to load models from LM Studio. Please check your API endpoint and ensure LM Studio is running.');
+		}
 	}
 
 	/**

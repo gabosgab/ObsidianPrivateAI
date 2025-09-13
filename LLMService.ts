@@ -6,6 +6,7 @@ export interface LLMConfig {
 	maxTokens?: number;
 	temperature?: number;
 	systemPrompt?: string;
+	model?: string;
 }
 
 // Centralized error message function
@@ -58,6 +59,7 @@ export interface ChatRequest {
 	max_tokens?: number;
 	temperature?: number;
 	stream?: boolean;
+	model?: string;
 }
 
 export interface ChatResponse {
@@ -125,6 +127,11 @@ export class LLMService {
 				stream: false
 			};
 
+			// Add model to request if specified
+			if (this.config.model) {
+				request.model = this.config.model;
+			}
+
 			LoggingUtility.log('Sending request to:', this.config.apiEndpoint);
 			LoggingUtility.log('Request payload:', JSON.stringify(request, null, 2));
 
@@ -154,6 +161,11 @@ export class LLMService {
 				temperature: this.config.temperature || 0.7,
 				stream: true
 			};
+
+			// Add model to request if specified
+			if (this.config.model) {
+				request.model = this.config.model;
+			}
 
 			LoggingUtility.log('Sending streaming request to:', this.config.apiEndpoint);
 			LoggingUtility.log('Request payload:', JSON.stringify(request, null, 2));
@@ -340,6 +352,11 @@ export class LLMService {
 				temperature: 0.1,
 				stream: false
 			};
+
+			// Add model to test request if specified
+			if (this.config.model) {
+				testRequest.model = this.config.model;
+			}
 			
 			const response = await this.makeAPIRequest(testRequest);
 			

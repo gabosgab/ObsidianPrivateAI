@@ -20,6 +20,7 @@ interface LLMConfig {
 	maxTokens: number;
 	temperature: number;
 	systemPrompt?: string;
+	model?: string;
 }
 
 interface ObsidianApp {
@@ -221,7 +222,8 @@ export class ChatView extends ItemView {
 			apiEndpoint: settings.apiEndpoint,
 			maxTokens: settings.maxTokens,
 			temperature: settings.temperature,
-			systemPrompt: settings.systemPrompt
+			systemPrompt: settings.systemPrompt,
+			model: settings.model
 		});
 	}
 
@@ -245,7 +247,8 @@ export class ChatView extends ItemView {
 			apiEndpoint: config.apiEndpoint,
 			maxTokens: config.maxTokens,
 			temperature: config.temperature,
-			systemPrompt: config.systemPrompt
+			systemPrompt: config.systemPrompt,
+			model: config.model
 		});
 	}
 

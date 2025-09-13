@@ -8,6 +8,8 @@ export interface LocalLLMSettings {
 	temperature: number;
 	// System prompt setting
 	systemPrompt: string;
+	// Model setting (optional - if not set, no model will be sent in payload)
+	model?: string;
 	// Search settings
 	searchMaxResults: number;
 	searchContextPercentage: number;
