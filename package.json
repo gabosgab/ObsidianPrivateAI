@@ -1,6 +1,6 @@
 {
   "name": "private-ai",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "description": "Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.",
   "main": "main.js",
   "scripts": {
