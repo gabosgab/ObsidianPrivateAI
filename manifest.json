@@ -1,7 +1,7 @@
 {
   "id": "private-ai",
   "name": "Private AI",
-  "version": "1.0.41",
+  "version": "1.0.42",
   "minAppVersion": "1.8.10",
   "description": "Effortlessly chat with your notes using locally hosted AI.  Private by design, your notes never leave the device and use locally processing only.",
   "author": "GB",
