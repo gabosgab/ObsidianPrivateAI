@@ -35,6 +35,8 @@ interface LocalLLMSettings {
 	// Embedding settings
 	embeddingEndpoint: string;
 	embeddingModel: string;
+	// Context notes visibility setting
+	contextNotesVisible: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -56,7 +58,9 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	ragMaxResults: 10,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
-	embeddingModel: 'text-embedding-nomic-embed-text-v1.5'
+	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
+	// Default context notes visibility
+	contextNotesVisible: false
 };
 
 export default class LocalLLMPlugin extends Plugin {

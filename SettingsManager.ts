@@ -25,6 +25,8 @@ export interface LocalLLMSettings {
 	// Embedding settings
 	embeddingEndpoint: string;
 	embeddingModel: string;
+	// Context notes visibility setting
+	contextNotesVisible: boolean;
 }
 
 export const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -47,7 +49,9 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	ragMaxResults: 5,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
-	embeddingModel: 'text-embedding-ada-002'
+	embeddingModel: 'text-embedding-ada-002',
+	// Default context notes visibility
+	contextNotesVisible: false
 };
 
 export class SettingsManager {

@@ -452,12 +452,33 @@
 	font-weight: 600;
 	color: var(--text-normal);
 	margin-bottom: 4px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .local-llm-used-notes-list {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
+}
+
+.local-llm-used-notes-list-hidden {
+	display: none;
+}
+
+.local-llm-context-toggle {
+	color: var(--interactive-accent);
+	text-decoration: none;
+	font-size: 11px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: color 0.2s ease;
+}
+
+.local-llm-context-toggle:hover {
+	color: var(--interactive-accent-hover);
+	text-decoration: underline;
 }
 
 .local-llm-used-note-item {

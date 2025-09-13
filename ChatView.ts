@@ -640,12 +640,43 @@ export class ChatView extends ItemView {
 			});
 			
 			const notesHeader = notesInfoEl.createEl('div', {
-				cls: 'local-llm-used-notes-header',
+				cls: 'local-llm-used-notes-header'
+			});
+			
+			// Create header text
+			const headerText = notesHeader.createEl('span', {
 				text: `📚 Used ${message.usedNotes.length} note${message.usedNotes.length > 1 ? 's' : ''} as context:`
 			});
 			
+			// Create toggle link
+			const toggleLink = notesHeader.createEl('a', {
+				cls: 'local-llm-context-toggle',
+				text: this.plugin.settings.contextNotesVisible ? 'Hide' : 'Show'
+			});
+			
+			// Add click handler for toggle
+			toggleLink.addEventListener('click', async (e) => {
+				e.preventDefault();
+				const currentVisibility = this.plugin.settings.contextNotesVisible;
+				const newVisibility = !currentVisibility;
+				
+				// Update setting
+				this.plugin.settings.contextNotesVisible = newVisibility;
+				await this.plugin.saveSettings();
+				
+				// Update toggle text
+				toggleLink.textContent = newVisibility ? 'Hide' : 'Show';
+				
+				// Show/hide notes list
+				if (newVisibility) {
+					notesList.removeClass('local-llm-used-notes-list-hidden');
+				} else {
+					notesList.addClass('local-llm-used-notes-list-hidden');
+				}
+			});
+			
 			const notesList = notesInfoEl.createEl('div', {
-				cls: 'local-llm-used-notes-list'
+				cls: `local-llm-used-notes-list ${this.plugin.settings.contextNotesVisible ? '' : 'local-llm-used-notes-list-hidden'}`
 			});
 			
 			message.usedNotes.forEach(note => {
