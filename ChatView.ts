@@ -855,7 +855,7 @@ Once your server is running, click the test connection button below.`;
 			<div class="local-llm-rag-progress">
 				<div class="local-llm-rag-progress-header">
 					<span class="local-llm-rag-progress-icon">⚡</span>
-					<span class="local-llm-rag-progress-text">Building RAG Database</span>
+					<span class="local-llm-rag-progress-text">Indexing Notes</span>
 				</div>
 				<div class="local-llm-rag-progress-details">
 					<div class="local-llm-rag-progress-message">${message} (${current}/${total})</div>

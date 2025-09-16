@@ -62,7 +62,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
 	// Image processing defaults
-	enableImageTextExtraction: true
+	enableImageTextExtraction: true,
 	// Default context notes visibility
 	contextNotesVisible: false
 };
@@ -444,9 +444,10 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('All Notes Search').setHeading();
 
 		const ragStats = this.plugin.ragService.getStats();
+		const detailedStatus = this.plugin.ragService.getDetailedStatus();
 		new Setting(containerEl)
 			.setName('RAG database status')
-			.setDesc(`Documents indexed: ${ragStats.documentCount} | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB`);
+			.setDesc(`Documents indexed: ${ragStats.documentCount} (${detailedStatus.textStats.documentCount} text, ${detailedStatus.imageStats.documentCount} image) | Files: ${ragStats.fileCount} | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB | Image processing: ${detailedStatus.imageProcessingEnabled ? 'enabled' : 'disabled'} | Image extractor: ${detailedStatus.imageTextExtractorAvailable ? 'available' : 'unavailable'}`);
 
 		// Smart update RAG database button
 		new Setting(containerEl)
@@ -797,7 +798,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			if (nameEl && nameEl.textContent === 'RAG database status') {
 				const descEl = setting.querySelector('.setting-item-description');
 				if (descEl) {
-					descEl.textContent = `Documents indexed: ${stats.documentCount} | Last updated: ${stats.lastUpdated.toLocaleString()} | Size: ${(stats.sizeInBytes / 1024).toFixed(1)} KB`;
+					const detailedStatus = this.plugin.ragService.getDetailedStatus();
+					descEl.textContent = `Documents indexed: ${stats.documentCount} (${detailedStatus.textStats.documentCount} text, ${detailedStatus.imageStats.documentCount} image) | Files: ${detailedStatus.totalFiles} | Last updated: ${stats.lastUpdated.toLocaleString()} | Size: ${(stats.sizeInBytes / 1024).toFixed(1)} KB | Image processing: ${detailedStatus.imageProcessingEnabled ? 'enabled' : 'disabled'} | Image extractor: ${detailedStatus.imageTextExtractorAvailable ? 'available' : 'unavailable'}`;
 				}
 				break;
 			}

@@ -175,3 +175,5 @@ temp/
 
 embeddings.json
 vector-index/embeddings.json
+vector-index/text-embeddings.json
+vector-index/image-embeddings.json
