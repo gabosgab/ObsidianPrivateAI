@@ -114,8 +114,26 @@ export class RAGService {
 		}
 
 		try {
+			// Get all files in the vault first for debugging
+			const allFiles = this.app.vault.getFiles();
+			LoggingUtility.log(`Total files in vault: ${allFiles.length}`);
+			
+			// Log file types for debugging
+			const fileTypes = new Map<string, number>();
+			allFiles.forEach(file => {
+				const ext = file.extension.toLowerCase();
+				fileTypes.set(ext, (fileTypes.get(ext) || 0) + 1);
+			});
+			LoggingUtility.log('File types in vault:', Object.fromEntries(fileTypes));
+			
 			// Get all image files in the vault
-			const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+			const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
+			LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
+			
+			// Log the first few image files for debugging
+			if (imageFiles.length > 0) {
+				LoggingUtility.log('First few image files:', imageFiles.slice(0, 5).map(f => f.path));
+			}
 			
 			if (imageFiles.length === 0) {
 				new Notice('No image files found in vault');
@@ -125,9 +143,12 @@ export class RAGService {
 			LoggingUtility.log(`Starting manual image processing for ${imageFiles.length} images`);
 
 			// Check vision capabilities first
+			LoggingUtility.log('Checking vision capabilities...');
 			const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
+			LoggingUtility.log('Vision capabilities result:', capabilities);
+			
 			if (!capabilities.supportsVision) {
-				throw new Error('LLM model does not support vision capabilities');
+				throw new Error(`Your current LLM model does not support vision capabilities. To process images in your Obsidian vault, you need to use a vision model like Gemma 3. Please switch to a vision-capable model in LM Studio and try again.`);
 			}
 
 			// Process each image with progress reporting
@@ -1136,9 +1157,18 @@ export class RAGService {
 			if (this.imageTextExtractor && this.imageProcessingEnabled) {
 				LoggingUtility.log('Starting image processing phase...');
 				
+				// Get all files in the vault first for debugging
+				const allFiles = this.app.vault.getFiles();
+				LoggingUtility.log(`Total files in vault during indexing: ${allFiles.length}`);
+				
 				// Get all image files in the vault
-				const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
-				LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
+				const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
+				LoggingUtility.log(`Found ${imageFiles.length} image files in vault during indexing`);
+				
+				// Log the first few image files for debugging
+				if (imageFiles.length > 0) {
+					LoggingUtility.log('First few image files found:', imageFiles.slice(0, 5).map(f => f.path));
+				}
 				
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
@@ -1148,10 +1178,10 @@ export class RAGService {
 					// Check vision capabilities first
 					LoggingUtility.log('Checking LLM vision capabilities...');
 					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}`);
+					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
 					
 					if (!capabilities.supportsVision) {
-						LoggingUtility.log('LLM model does not support vision, skipping image processing');
+						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
 					} else {
 						// Process each image
 						for (let i = 0; i < imageFiles.length; i++) {
@@ -1277,9 +1307,9 @@ export class RAGService {
 	}
 
 	/**
-	 * Force a complete rebuild of the entire RAG database (clears existing index)
+	 * Force a complete rebuild of the entire RAG database (clears ALL indexes including images)
 	 */
-	async forceRebuildIndex(progressCallback?: ProgressCallback): Promise<void> {
+	async forceCompleteRebuildIndex(progressCallback?: ProgressCallback): Promise<void> {
 		if (this.isIndexing) {
 			new Notice('Indexing is already in progress');
 			return;
@@ -1296,10 +1326,10 @@ export class RAGService {
 			}
 			await this.ensureEmbeddingConnection();
 			
-			// Clear existing indexes completely
+			// Clear existing indexes completely (including images)
 			await this.textVectorDB.clear();
 			await this.imageVectorDB.clear();
-			LoggingUtility.log('Cleared existing vector indexes for complete rebuild');
+			LoggingUtility.log('Cleared ALL existing vector indexes for complete rebuild');
 			
 			// Get all markdown files
 			const files = this.app.vault.getMarkdownFiles();
@@ -1395,10 +1425,233 @@ export class RAGService {
 					// Check vision capabilities first
 					LoggingUtility.log('Checking LLM vision capabilities...');
 					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}`);
+					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
 					
 					if (!capabilities.supportsVision) {
-						LoggingUtility.log('LLM model does not support vision, skipping image processing');
+						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
+					} else {
+						// Process each image (no checksum check since we cleared the image index)
+						for (let i = 0; i < imageFiles.length; i++) {
+							if (this.indexingAbortController.signal.aborted) {
+								LoggingUtility.log('Image processing aborted by user');
+								break;
+							}
+							
+							const imageFile = imageFiles[i];
+							
+							if (this.progressCallback) {
+								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
+							}
+							
+							try {
+								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+								
+								// Extract text from image
+								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+								
+								if (result.success && result.extractedText.trim()) {
+									// Create a virtual document for the extracted text
+									const extractedText = result.extractedText;
+									
+									// Split extracted text into chunks
+									const chunks = this.splitIntoParagraphs(extractedText);
+									
+									if (chunks.length > 0) {
+										// Generate embeddings for chunks
+										const texts = chunks.map(c => c.text);
+										const embeddings = await this.embeddingService.generateEmbeddings(texts);
+										const checksum = await this.calculateCRC32(imageFile);
+
+										// Create chunk documents for the image
+										const chunkDocuments = chunks.map((chunk, index) => ({
+											id: `${imageFile.path}#c${chunk.index}`,
+											vector: embeddings[index],
+											metadata: {
+												filePath: imageFile.path,
+												fileName: imageFile.basename,
+												title: `Image: ${imageFile.basename}`,
+												paragraphIndex: chunk.index,
+												paragraphText: chunk.text,
+												fileChecksum: checksum,
+												lastModified: imageFile.stat.mtime,
+												fileSize: imageFile.stat.size,
+												sourceType: 'image' as const,
+												extractedText: true
+											}
+										}));
+										
+										// Store in image vector database
+										await this.imageVectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+										await this.imageVectorDB.save();
+										
+										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
+									}
+								} else {
+									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+								}
+								
+								// Yield control periodically
+								if (i % 3 === 0) {
+									await new Promise(resolve => setTimeout(resolve, 0));
+								}
+								
+							} catch (error) {
+								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+							}
+						}
+						
+						// Save the updated image index after image processing
+						await this.imageVectorDB.save();
+						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+					}
+				} else {
+					LoggingUtility.log('No image files found in vault');
+				}
+			} else {
+				LoggingUtility.log('Image processing skipped - extractor not available or disabled');
+			}
+			
+			const stats = this.getStats();
+			LoggingUtility.log(`Complete rebuild finished. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files (including images)`);
+			
+		} catch (error) {
+			LoggingUtility.error('Error during complete rebuild:', error);
+			// Check if it's a connection error and show appropriate message
+			if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+				new Notice('RAG complete rebuild failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.', 10000);
+			} else {
+				new Notice('Error during RAG complete rebuild: ' + error.message, 8000);
+			}
+		} finally {
+			this.isIndexing = false;
+			this.progressCallback = undefined;
+			this.indexingAbortController = undefined;
+		}
+	}
+
+	/**
+	 * Force a complete rebuild of the entire RAG database (preserves image index for checksum checking)
+	 */
+	async forceRebuildIndex(progressCallback?: ProgressCallback): Promise<void> {
+		if (this.isIndexing) {
+			new Notice('Indexing is already in progress');
+			return;
+		}
+
+		this.isIndexing = true;
+		this.progressCallback = progressCallback;
+		this.indexingAbortController = new AbortController();
+
+		try {
+			// Verify embedding service connection before proceeding
+			if (this.progressCallback) {
+				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
+			}
+			await this.ensureEmbeddingConnection();
+			
+			// Clear existing text index completely, but preserve image index for checksum checking
+			await this.textVectorDB.clear();
+			// Don't clear image index - we'll check checksums to avoid reprocessing unchanged images
+			LoggingUtility.log('Cleared text vector index for complete rebuild, preserving image index for checksum checking');
+			
+			// Get all markdown files
+			const files = this.app.vault.getMarkdownFiles();
+			
+			LoggingUtility.log(`Starting complete rebuild of ${files.length} markdown files`);
+			
+			// Pre-calculate total chunks across all files
+			let totalChunks = 0;
+			const fileChunkCounts = new Map<string, number>();
+			
+			if (this.progressCallback) {
+				this.progressCallback(0, files.length, 'Calculating total chunks for markdown files...');
+			}
+			
+			for (let i = 0; i < files.length; i++) {
+				const file = files[i];
+				
+				try {
+					const content = await this.app.vault.read(file);
+					const chunks = this.splitIntoParagraphs(content);
+					const chunkCount = chunks.length;
+					fileChunkCounts.set(file.path, chunkCount);
+					totalChunks += chunkCount;
+				} catch (error) {
+					LoggingUtility.warn(`Could not read file for chunk calculation: ${file.path}`, error);
+					fileChunkCounts.set(file.path, 0);
+				}
+				
+				// Yield control periodically during chunk counting
+				if (i % 10 === 0) {
+					await new Promise(resolve => setTimeout(resolve, 0));
+				}
+			}
+			
+			LoggingUtility.log(`Total chunks to process: ${totalChunks} across ${files.length} markdown files`);
+			
+			// Process markdown files and track chunk-level progress
+			let processedChunks = 0;
+			
+			for (let i = 0; i < files.length; i++) {
+				if (this.indexingAbortController.signal.aborted) {
+					LoggingUtility.log('Indexing aborted by user');
+					break;
+				}
+				
+				const file = files[i];
+				const chunkCount = fileChunkCounts.get(file.path) || 0;
+				
+				if (this.progressCallback && chunkCount > 0) {
+					this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
+				}
+				
+				await this.updateFileEmbeddingsWithProgress(file, (chunkIndex: number, totalFileChunks: number) => {
+					if (this.progressCallback) {
+						const currentChunk = processedChunks + chunkIndex + 1;
+						this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
+					}
+				});
+				
+				processedChunks += chunkCount;
+				
+				// Save periodically to avoid losing progress
+				if ((i + 1) % 10 === 0) {
+					await this.textVectorDB.save();
+				}
+				
+				// Yield control to the UI thread every few files to keep Obsidian responsive
+				if (i % 3 === 0) {
+					await new Promise(resolve => setTimeout(resolve, 0));
+				}
+			}
+			
+			// Final save for markdown files
+			await this.textVectorDB.save();
+			
+			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
+			
+			// Process images LAST if image text extractor is available
+			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.imageProcessingEnabled}`);
+			
+			if (this.imageTextExtractor && this.imageProcessingEnabled) {
+				LoggingUtility.log('Starting image processing phase...');
+				
+				// Get all image files in the vault
+				const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+				LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
+				
+				if (imageFiles.length > 0) {
+					if (this.progressCallback) {
+						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
+					}
+					
+					// Check vision capabilities first
+					LoggingUtility.log('Checking LLM vision capabilities...');
+					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
+					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
+					
+					if (!capabilities.supportsVision) {
+						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
 					} else {
 						// Process each image
 						for (let i = 0; i < imageFiles.length; i++) {
@@ -1416,6 +1669,18 @@ export class RAGService {
 							try {
 								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 								
+								// Check if image has changed since last extraction by comparing checksum
+								const newImageChecksum = await this.calculateCRC32(imageFile);
+								
+								const existingImageDocs = this.imageVectorDB.getFileDocuments(imageFile.path);
+								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
+									// Image content hasn't changed, skip extraction
+									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
+									continue;
+								}
+								
+								LoggingUtility.log(`Image content changed, extracting text: ${imageFile.path} (checksum: ${newImageChecksum})`);
+
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
 								

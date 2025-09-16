@@ -492,7 +492,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					button.setDisabled(true);
 					
 					try {
-						await this.plugin.ragService.forceRebuildIndex((current, total, message) => {
+						await this.plugin.ragService.forceCompleteRebuildIndex((current, total, message) => {
 							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
 						});
 						
@@ -638,7 +638,12 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						new Notice('Image processing completed successfully!');
 					} catch (error) {
 						LoggingUtility.error('Image processing failed:', error);
-						new Notice(`Image processing failed: ${error.message}`);
+						// Show user-friendly error message for vision model issues
+						if (error.message.includes('vision capabilities')) {
+							new Notice('❌ Vision Model Required: Your current LLM model does not support image processing. Please switch to a vision model like Gemma 3 in LM Studio and try again.', 8000);
+						} else {
+							new Notice(`Image processing failed: ${error.message}`);
+						}
 					} finally {
 						button.setButtonText('Process Images');
 						button.setDisabled(false);
