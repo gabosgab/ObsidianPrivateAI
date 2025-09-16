@@ -667,7 +667,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			// Add available models
 			if (models.length > 0) {
 				models.forEach(model => {
-					dropdown.addOption(model, model);
+					if (!model.contains('text-embedding')) {
+						dropdown.addOption(model, model);
+					}
 				});
 			} else {
 				dropdown.addOption('', 'No models available');
