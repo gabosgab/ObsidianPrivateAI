@@ -51,7 +51,14 @@ It appears your local LLM server is not running.
 
 export interface ChatMessage {
 	role: 'user' | 'assistant' | 'system';
-	content: string;
+	content: string | Array<{
+		type: 'text' | 'image_url';
+		text?: string;
+		image_url?: {
+			url: string;
+			detail?: 'low' | 'high' | 'auto';
+		};
+	}>;
 }
 
 export interface ChatRequest {
@@ -139,6 +146,60 @@ export class LLMService {
 			return response.choices[0]?.message?.content || 'No response content';
 		} catch (error) {
 			LoggingUtility.error('Error sending message to LLM:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Send a vision message with image and text
+	 */
+	async sendVisionMessage(text: string, imageBase64: string, conversationHistory: ChatMessage[] = []): Promise<string> {
+		try {
+			const messages: ChatMessage[] = [];
+			
+			// Add system prompt if configured
+			if (this.config.systemPrompt && this.config.systemPrompt.trim()) {
+				messages.push({ role: 'system', content: this.config.systemPrompt });
+			}
+			
+			// Add conversation history
+			messages.push(...conversationHistory);
+			
+			// Create vision message with image and text
+			const visionMessage: ChatMessage = {
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: text
+					},
+					{
+						type: 'image_url',
+						image_url: {
+							url: imageBase64,
+							detail: 'high'
+						}
+					}
+				]
+			};
+			
+			messages.push(visionMessage);
+
+			const request: ChatRequest = {
+				messages,
+				max_tokens: this.config.maxTokens || 1000,
+				temperature: this.config.temperature || 0.7,
+				stream: false
+			};
+
+			LoggingUtility.log('Sending vision request to:', this.config.apiEndpoint);
+			LoggingUtility.log('Vision request payload:', JSON.stringify(request, null, 2));
+
+			const response = await this.makeAPIRequest(request);
+			LoggingUtility.log('Vision reply:', JSON.stringify(response.choices[0]?.message?.content, null, 2));
+			return response.choices[0]?.message?.content || 'No response content';
+		} catch (error) {
+			LoggingUtility.error('Error sending vision message to LLM:', error);
 			throw error;
 		}
 	}

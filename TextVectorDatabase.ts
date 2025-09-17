@@ -1,7 +1,7 @@
 import { LoggingUtility } from './LoggingUtility';
 import { App } from 'obsidian';
 
-export interface ParagraphDocument {
+export interface TextDocument {
 	id: string; // unique id for the paragraph (e.g., "file.md#p1")
 	vector: number[];
 	metadata: {
@@ -10,25 +10,24 @@ export interface ParagraphDocument {
 		paragraphIndex: number;
 		paragraphText: string; // store the actual paragraph text for retrieval
 		fileChecksum: string; // checksum of entire file
-		sourceType?: 'markdown' | 'image'; // type of source file
-		extractedText?: boolean; // whether text was extracted from image
+		sourceType: 'markdown'; // type of source file
 	};
 }
 
-interface VectorIndex {
+interface TextVectorIndex {
 	version: string;
-	documents: ParagraphDocument[];
+	documents: TextDocument[];
 	dimension: number;
 	lastUpdated: number;
 }
 
-export interface ParagraphSearchResult {
-	document: ParagraphDocument;
+export interface TextSearchResult {
+	document: TextDocument;
 	similarity: number;
 }
 
-export class VectorDatabase {
-	private index: VectorIndex;
+export class TextVectorDatabase {
+	private index: TextVectorIndex;
 	private indexPath: string;
 	private app: App;
 
@@ -53,7 +52,7 @@ export class VectorDatabase {
 			
 			// Check if we need to migrate from old format
 			if (loadedIndex.version === '1.0') {
-				LoggingUtility.log('Detected old vector index format, will need rebuild for paragraph support');
+				LoggingUtility.log('Detected old text vector index format, will need rebuild for paragraph support');
 				// Clear old index as structure is incompatible
 				this.index = {
 					version: '2.0',
@@ -65,9 +64,9 @@ export class VectorDatabase {
 				this.index = loadedIndex;
 			}
 			
-			LoggingUtility.log(`Loaded vector index v${this.index.version} with ${this.index.documents.length} paragraph documents`);
+			LoggingUtility.log(`Loaded text vector index v${this.index.version} with ${this.index.documents.length} text documents`);
 		} catch (error) {
-			LoggingUtility.log('No existing vector index found, starting fresh');
+			LoggingUtility.log('No existing text vector index found, starting fresh');
 			this.index = {
 				version: '2.0',
 				documents: [],
@@ -104,9 +103,9 @@ export class VectorDatabase {
 			
 			const data = JSON.stringify(this.index, null, 2);
 			await this.app.vault.adapter.write(this.indexPath, data);
-			LoggingUtility.log(`Saved vector index with ${this.index.documents.length} paragraph documents`);
+			LoggingUtility.log(`Saved text vector index with ${this.index.documents.length} text documents`);
 		} catch (error) {
-			LoggingUtility.error('Failed to save vector index:', error);
+			LoggingUtility.error('Failed to save text vector index:', error);
 			throw error;
 		}
 	}
@@ -137,28 +136,28 @@ export class VectorDatabase {
 	/**
 	 * Add or update paragraphs for a file
 	 */
-	async upsertFileDocuments(filePath: string, paragraphDocuments: ParagraphDocument[]): Promise<void> {
+	async upsertFileDocuments(filePath: string, textDocuments: TextDocument[]): Promise<void> {
 		// Remove existing documents for this file
 		await this.removeFileDocuments(filePath);
 		
-		// Add new paragraph documents
-		for (const document of paragraphDocuments) {
+		// Add new text documents
+		for (const document of textDocuments) {
 			// Set dimension from first document if not set
 			if (this.index.dimension === 0 && document.vector.length > 0) {
 				this.index.dimension = document.vector.length;
-				LoggingUtility.log(`Set vector dimension to ${this.index.dimension}`);
+				LoggingUtility.log(`Set text vector dimension to ${this.index.dimension}`);
 			}
 			
 			// Validate dimension
 			if (document.vector.length !== this.index.dimension) {
-				throw new Error(`Vector dimension mismatch. Expected ${this.index.dimension}, got ${document.vector.length}`);
+				throw new Error(`Text vector dimension mismatch. Expected ${this.index.dimension}, got ${document.vector.length}`);
 			}
 			
 			this.index.documents.push(document);
 		}
 		
 		this.index.lastUpdated = Date.now();
-		LoggingUtility.log(`Updated ${paragraphDocuments.length} paragraph documents for file: ${filePath}`);
+		LoggingUtility.log(`Updated ${textDocuments.length} text documents for file: ${filePath}`);
 	}
 
 	/**
@@ -171,15 +170,15 @@ export class VectorDatabase {
 		const removedCount = initialLength - this.index.documents.length;
 		if (removedCount > 0) {
 			this.index.lastUpdated = Date.now();
-			LoggingUtility.log(`Removed ${removedCount} paragraph documents for file: ${filePath}`);
+			LoggingUtility.log(`Removed ${removedCount} text documents for file: ${filePath}`);
 		}
 	}
 
 	/**
 	 * Search for similar paragraphs using cosine similarity
 	 */
-	search(queryVector: number[], limit: number = 5, threshold: number = 0.5): ParagraphSearchResult[] {
-		LoggingUtility.log(`Searching for ${limit} similar paragraphs with threshold ${threshold}`);
+	search(queryVector: number[], limit: number = 5, threshold: number = 0.5): TextSearchResult[] {
+		LoggingUtility.log(`Searching for ${limit} similar text paragraphs with threshold ${threshold}`);
 		if (this.index.documents.length === 0) {
 			return [];
 		}
@@ -197,18 +196,18 @@ export class VectorDatabase {
 			.sort((a, b) => b.similarity - a.similarity)
 			.slice(0, limit);
 
-		LoggingUtility.log(`Found ${results.length} similar paragraphs in ${Date.now() - startTime}ms`);
+		LoggingUtility.log(`Found ${results.length} similar text paragraphs in ${Date.now() - startTime}ms`);
 		return results;
 	}
 
 	/**
 	 * Search for similar paragraphs and group by file
 	 */
-	searchGroupedByFile(queryVector: number[], maxFiles: number = 3, maxParagraphsPerFile: number = 3, threshold: number = 0.5): Map<string, ParagraphSearchResult[]> {
+	searchGroupedByFile(queryVector: number[], maxFiles: number = 3, maxParagraphsPerFile: number = 3, threshold: number = 0.5): Map<string, TextSearchResult[]> {
 		const allResults = this.search(queryVector, maxFiles * maxParagraphsPerFile * 2, threshold);
 		
 		// Group by file
-		const resultsByFile = new Map<string, ParagraphSearchResult[]>();
+		const resultsByFile = new Map<string, TextSearchResult[]>();
 		
 		for (const result of allResults) {
 			const filePath = result.document.metadata.filePath;
@@ -270,7 +269,7 @@ export class VectorDatabase {
 			lastUpdated: Date.now()
 		};
 		await this.save();
-		LoggingUtility.log('Cleared vector index');
+		LoggingUtility.log('Cleared text vector index');
 	}
 
 	/**
@@ -298,14 +297,14 @@ export class VectorDatabase {
 	/**
 	 * Get all documents for a specific file
 	 */
-	getFileDocuments(filePath: string): ParagraphDocument[] {
+	getFileDocuments(filePath: string): TextDocument[] {
 		return this.index.documents.filter(doc => doc.metadata.filePath === filePath);
 	}
 
 	/**
 	 * Get all documents in the index
 	 */
-	getAllDocuments(): ParagraphDocument[] {
+	getAllDocuments(): TextDocument[] {
 		return [...this.index.documents];
 	}
 
@@ -321,7 +320,7 @@ export class VectorDatabase {
 
 		// Check if any of the key properties have changed
 		const firstDoc = fileDocuments[0];
-		return firstDoc.metadata.fileChecksum !== checksum
+		return firstDoc.metadata.fileChecksum !== checksum;
 	}
 
 	/**
@@ -349,7 +348,7 @@ export class VectorDatabase {
 		
 		if (before !== after) {
 			this.index.lastUpdated = Date.now();
-			LoggingUtility.log(`Removed ${before - after} obsolete paragraph documents`);
+			LoggingUtility.log(`Removed ${before - after} obsolete text documents`);
 		}
 	}
-} 
+}
