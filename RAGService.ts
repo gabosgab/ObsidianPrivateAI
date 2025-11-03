@@ -1023,7 +1023,7 @@ export class RAGService {
 			await this.ensureEmbeddingConnection();
 			
 			// Get all markdown files
-			const files = this.app.vault.getFiles();
+			const files = this.app.vault.getMarkdownFiles();
 			
 			LoggingUtility.log(`Starting to analyze ${files.length} markdown files for changes`);
 			
@@ -1158,7 +1158,7 @@ export class RAGService {
 				LoggingUtility.log('Starting image processing phase...');
 				
 				// Get all files in the vault first for debugging
-				const allFiles = this.app.vault.getFiles();
+				const allFiles = this.app.vault.getMarkdownFiles();
 				LoggingUtility.log(`Total files in vault during indexing: ${allFiles.length}`);
 				
 				// Get all image files in the vault
