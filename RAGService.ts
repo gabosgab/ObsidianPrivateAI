@@ -1023,7 +1023,7 @@ export class RAGService {
 			await this.ensureEmbeddingConnection();
 			
 			// Get all markdown files
-			const files = this.app.vault.getFiles();
+			const files = this.app.vault.getMarkdownFiles();
 			
 			LoggingUtility.log(`Starting to analyze ${files.length} markdown files for changes`);
 			
