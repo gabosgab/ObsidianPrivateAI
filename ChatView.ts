@@ -635,6 +635,9 @@ export class ChatView extends ItemView {
 
 		// Show used notes information for assistant messages
 		if (message.role === 'assistant' && message.usedNotes && message.usedNotes.length > 0) {
+			// Deduplicate notes by path, keeping only the highest relevance score for each unique document
+			const deduplicatedNotes = this.deduplicateNotesByPath(message.usedNotes);
+			
 			const notesInfoEl = messageEl.createEl('div', {
 				cls: 'local-llm-used-notes'
 			});
@@ -645,7 +648,7 @@ export class ChatView extends ItemView {
 			
 			// Create header text
 			const headerText = notesHeader.createEl('span', {
-				text: `📚 Used ${message.usedNotes.length} note${message.usedNotes.length > 1 ? 's' : ''} as context:`
+				text: `📚 Used ${deduplicatedNotes.length} note${deduplicatedNotes.length > 1 ? 's' : ''} as context:`
 			});
 			
 			// Create toggle link
@@ -679,7 +682,7 @@ export class ChatView extends ItemView {
 				cls: `local-llm-used-notes-list ${this.plugin.settings.contextNotesVisible ? '' : 'local-llm-used-notes-list-hidden'}`
 			});
 			
-			message.usedNotes.forEach(note => {
+			deduplicatedNotes.forEach(note => {
 				const noteEl = notesList.createEl('div', {
 					cls: 'local-llm-used-note-item'
 				});
@@ -715,6 +718,23 @@ export class ChatView extends ItemView {
 
 		// Scroll to bottom
 		this.messageContainer.scrollTop = this.messageContainer.scrollHeight;
+	}
+
+	/**
+	 * Deduplicate search results by document path, keeping only the highest relevance score for each unique document
+	 */
+	private deduplicateNotesByPath(notes: SearchResult[]): SearchResult[] {
+		const notesByPath = new Map<string, SearchResult>();
+		
+		for (const note of notes) {
+			const existing = notesByPath.get(note.path);
+			if (!existing || note.relevance > existing.relevance) {
+				notesByPath.set(note.path, note);
+			}
+		}
+		
+		// Return deduplicated notes sorted by relevance (highest first)
+		return Array.from(notesByPath.values()).sort((a, b) => b.relevance - a.relevance);
 	}
 
 	private stopStreaming() {
