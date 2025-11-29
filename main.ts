@@ -30,6 +30,7 @@ interface LocalLLMSettings {
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
 	// RAG settings (RAG is now always enabled)
+	enableRAG: boolean;
 	ragThreshold: number;
 	ragMaxResults: number;
 	// Embedding settings
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Default developer logging setting
 	enableDeveloperLogging: false,
 	// RAG defaults (always enabled)
+	enableRAG: true,
 	ragThreshold: 0.5,
 	ragMaxResults: 10,
 	// Embedding defaults
@@ -107,11 +109,8 @@ export default class LocalLLMPlugin extends Plugin {
 		
 		// Initialize image text extractor in RAG service
 		this.ragService.initializeImageTextExtractor(this.llmService);
-		
-		// Store the setting value for image processing
-		this.ragService.setImageProcessingEnabled(this.settings.enableImageTextExtraction);
-		
-		await this.ragService.initialize();
+				
+		await this.ragService.initialize(this.settings);
 		
 		// Always start file watcher since RAG is always enabled
 		this.ragService.startFileWatcher();
@@ -172,7 +171,6 @@ export default class LocalLLMPlugin extends Plugin {
 			// Re-initialize image text extractor with updated LLM service
 			if (this.ragService) {
 				this.ragService.initializeImageTextExtractor(this.llmService);
-				this.ragService.setImageProcessingEnabled(this.settings.enableImageTextExtraction);
 			}
 		}
 		
@@ -611,7 +609,6 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableImageTextExtraction)
 				.onChange(async (value) => {
 					this.plugin.settings.enableImageTextExtraction = value;
-					this.plugin.ragService.setImageProcessingEnabled(value);
 					await this.plugin.saveSettings();
 				}));
 
@@ -804,7 +801,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				const descEl = setting.querySelector('.setting-item-description');
 				if (descEl) {
 					const detailedStatus = this.plugin.ragService.getDetailedStatus();
-					descEl.textContent = `Documents indexed: ${stats.documentCount} (${detailedStatus.textStats.documentCount} text, ${detailedStatus.imageStats.documentCount} image) | Files: ${detailedStatus.totalFiles} | Last updated: ${stats.lastUpdated.toLocaleString()} | Size: ${(stats.sizeInBytes / 1024).toFixed(1)} KB | Image processing: ${detailedStatus.imageProcessingEnabled ? 'enabled' : 'disabled'} | Image extractor: ${detailedStatus.imageTextExtractorAvailable ? 'available' : 'unavailable'}`;
+					descEl.textContent = `Documents indexed: ${stats.documentCount} (${detailedStatus.textStats.documentCount} text, ${detailedStatus.imageStats.documentCount} image) | Files: ${detailedStatus.totalFiles} | Last updated: ${stats.lastUpdated.toLocaleString()} | Size: ${(stats.sizeInBytes / 1024).toFixed(1)} KB | Image extractor: ${detailedStatus.imageTextExtractorAvailable ? 'available' : 'unavailable'}`;
 				}
 				break;
 			}

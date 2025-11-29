@@ -18,6 +18,7 @@ export interface LocalLLMSettings {
 	contextMode: ContextMode;
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
+	enableImageTextExtraction: boolean;
 	// RAG settings
 	enableRAG: boolean;
 	ragThreshold: number;
@@ -44,14 +45,15 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	// Default developer logging setting
 	enableDeveloperLogging: false,
 	// RAG defaults
-	enableRAG: false,
+	enableRAG: true,
 	ragThreshold: 0.5,
 	ragMaxResults: 5,
 	// Embedding defaults
 	embeddingEndpoint: 'http://localhost:1234/v1/embeddings',
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
 	// Default context notes visibility
-	contextNotesVisible: false
+	contextNotesVisible: false,
+	enableImageTextExtraction: true
 };
 
 export class SettingsManager {

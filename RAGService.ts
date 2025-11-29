@@ -7,6 +7,7 @@ import { EmbeddingService, EmbeddingConfig } from './EmbeddingService';
 import { ImageTextExtractor } from './ImageTextExtractor';
 import * as CRC32 from 'crc-32';
 import * as path from 'path';
+import { SettingsManager, LocalLLMSettings } from './SettingsManager';
 
 
 export interface RAGSearchResult {
@@ -47,7 +48,6 @@ export class RAGService {
 	private imageVectorDB: ImageVectorDatabase;
 	private embeddingService: EmbeddingService;
 	private imageTextExtractor?: ImageTextExtractor;
-	private imageProcessingEnabled: boolean = true;
 	private fileChangeRef?: EventRef;
 	private fileRenameRef?: EventRef;
 	private fileDeleteRef?: EventRef;
@@ -61,6 +61,8 @@ export class RAGService {
 	private pendingActiveFileUpdates: Set<string> = new Set();
 	private activeFileCheckInterval?: NodeJS.Timeout;
 	private lastActiveFilePath: string | null = null;
+	private settings: LocalLLMSettings;
+	private imageProcessingEnabled: boolean = false;
 	
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
@@ -91,14 +93,6 @@ export class RAGService {
 			LoggingUtility.warn('Failed to initialize image text extractor:', error);
 			this.imageTextExtractor = undefined;
 		}
-	}
-
-	/**
-	 * Set whether image processing is enabled
-	 */
-	setImageProcessingEnabled(enabled: boolean): void {
-		this.imageProcessingEnabled = enabled;
-		LoggingUtility.log(`Image processing ${enabled ? 'enabled' : 'disabled'}`);
 	}
 
 	/**
@@ -239,10 +233,11 @@ export class RAGService {
 	/**
 	 * Initialize the RAG service with automatic maintenance
 	 */
-	async initialize(): Promise<void> {
+	async initialize(settings: LocalLLMSettings): Promise<void> {
 		try {
 			LoggingUtility.log('Initializing RAG service...');
-			
+			this.settings = settings;
+
 			// Load databases first
 			await this.textVectorDB.load();
 			await this.imageVectorDB.load();
@@ -1152,9 +1147,9 @@ export class RAGService {
 			}
 			
 			// Process images LAST if image text extractor is available
-			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.imageProcessingEnabled}`);
+			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.settings.enableImageTextExtraction}`);
 			
-			if (this.imageTextExtractor && this.imageProcessingEnabled) {
+			if (this.imageTextExtractor && this.settings.enableImageTextExtraction) {
 				LoggingUtility.log('Starting image processing phase...');
 				
 				// Get all files in the vault first for debugging
@@ -1408,9 +1403,9 @@ export class RAGService {
 			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
 			
 			// Process images LAST if image text extractor is available
-			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.imageProcessingEnabled}`);
+			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.settings.enableImageTextExtraction}`);
 			
-			if (this.imageTextExtractor && this.imageProcessingEnabled) {
+			if (this.imageTextExtractor && this.settings.enableImageTextExtraction) {
 				LoggingUtility.log('Starting image processing phase...');
 				
 				// Get all image files in the vault
@@ -1633,7 +1628,7 @@ export class RAGService {
 			// Process images LAST if image text extractor is available
 			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.imageProcessingEnabled}`);
 			
-			if (this.imageTextExtractor && this.imageProcessingEnabled) {
+			if (this.imageTextExtractor && this.settings.enableImageTextExtraction) {
 				LoggingUtility.log('Starting image processing phase...');
 				
 				// Get all image files in the vault
@@ -2148,8 +2143,8 @@ export class RAGService {
 		isIndexing: boolean;
 		textStats: { documentCount: number; fileCount: number; lastUpdated: Date; sizeInBytes: number };
 		imageStats: { documentCount: number; fileCount: number; lastUpdated: Date; sizeInBytes: number };
-		imageProcessingEnabled: boolean;
 		imageTextExtractorAvailable: boolean;
+		imageProcessingEnabled: boolean;
 		totalDocuments: number;
 		totalFiles: number;
 	} {
@@ -2161,8 +2156,8 @@ export class RAGService {
 			isIndexing: this.isIndexing,
 			textStats,
 			imageStats,
-			imageProcessingEnabled: this.imageProcessingEnabled,
 			imageTextExtractorAvailable: !!this.imageTextExtractor,
+			imageProcessingEnabled: this.settings?.enableImageTextExtraction ?? false,
 			totalDocuments: textStats.documentCount + imageStats.documentCount,
 			totalFiles: textStats.fileCount + imageStats.fileCount
 		};
