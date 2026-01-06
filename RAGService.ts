@@ -1,6 +1,5 @@
 import { App, TFile, EventRef, Events, Notice, ProgressBarComponent } from 'obsidian';
-import { TextVectorDatabase, TextSearchResult, TextDocument } from './TextVectorDatabase';
-import { ImageVectorDatabase, ImageSearchResult, ImageDocument } from './ImageVectorDatabase';
+import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from './UnifiedVectorDatabase';
 import { LoggingUtility } from './LoggingUtility';
 import { SearchResult } from './SearchService';
 import { EmbeddingService, EmbeddingConfig } from './EmbeddingService';
@@ -44,8 +43,7 @@ export enum MaintenanceOperation {
 
 export class RAGService {
 	private app: App;
-	private textVectorDB: TextVectorDatabase;
-	private imageVectorDB: ImageVectorDatabase;
+	private vectorDB: UnifiedVectorDatabase;
 	private embeddingService: EmbeddingService;
 	private imageTextExtractor?: ImageTextExtractor;
 	private fileChangeRef?: EventRef;
@@ -66,12 +64,9 @@ export class RAGService {
 	
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
-		const textIndexPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/text-embeddings.json`;
-		const imageIndexPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/image-embeddings.json`;
-		LoggingUtility.log('RAGService constructor called with textIndexPath:', path.resolve(textIndexPath));
-		LoggingUtility.log('RAGService constructor called with imageIndexPath:', path.resolve(imageIndexPath));
-		this.textVectorDB = new TextVectorDatabase(this.app, textIndexPath);
-		this.imageVectorDB = new ImageVectorDatabase(this.app, imageIndexPath);
+		const dbPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/embeddings.db`;
+		LoggingUtility.log('RAGService constructor called with dbPath:', path.resolve(dbPath));
+		this.vectorDB = new UnifiedVectorDatabase(this.app, dbPath);
 		this.embeddingService = new EmbeddingService(embeddingConfig);
 		this.initOptions = {
 			autoMaintenance: true,
@@ -190,8 +185,8 @@ export class RAGService {
 								}
 							}));
 							
-							// Store in image vector database
-							await this.imageVectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+							// Store in unified vector database
+							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 							
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
@@ -209,8 +204,8 @@ export class RAGService {
 				}
 			}
 
-			// Save the updated image index
-			await this.imageVectorDB.save();
+			// Save the updated database
+			await this.vectorDB.save();
 			
 			const stats = this.getStats();
 			LoggingUtility.log(`Manual image processing complete. Total: ${stats.documentCount} paragraph documents (${stats.markdownDocuments} markdown, ${stats.imageDocuments} image) across ${stats.fileCount} files (${stats.markdownFiles} markdown, ${stats.imageFiles} image)`);
@@ -238,9 +233,8 @@ export class RAGService {
 			LoggingUtility.log('Initializing RAG service...');
 			this.settings = settings;
 
-			// Load databases first
-			await this.textVectorDB.load();
-			await this.imageVectorDB.load();
+			// Load database first
+			await this.vectorDB.load();
 			
 			const stats = this.getStats();
 			LoggingUtility.log(`RAG Service initialized with ${stats.documentCount} total paragraph documents (${stats.markdownDocuments} markdown, ${stats.imageDocuments} image) across ${stats.fileCount} total files (${stats.markdownFiles} markdown, ${stats.imageFiles} image)`);
@@ -285,16 +279,14 @@ export class RAGService {
 	 */
 	private async detectFreshInstall(): Promise<boolean> {
 		try {
-			// Ensure databases are loaded before checking stats
-			await this.textVectorDB.load();
-			await this.imageVectorDB.load();
+			// Ensure database is loaded before checking stats
+			await this.vectorDB.load();
 			
-			const textStats = this.textVectorDB.getStats();
-			const imageStats = this.imageVectorDB.getStats();
-			const totalDocuments = textStats.documentCount + imageStats.documentCount;
-			const totalFiles = textStats.fileCount + imageStats.fileCount;
+			const stats = this.vectorDB.getStats();
+			const totalDocuments = stats.documentCount;
+			const totalFiles = stats.fileCount;
 			
-			LoggingUtility.log(`Fresh install detection: ${totalDocuments} total documents (${textStats.documentCount} text, ${imageStats.documentCount} image), ${totalFiles} indexed files`);
+			LoggingUtility.log(`Fresh install detection: ${totalDocuments} total documents, ${totalFiles} indexed files`);
 			
 			// Consider it fresh if there are no documents AND no files indexed
 			const isFresh = totalDocuments === 0 && totalFiles === 0;
@@ -641,8 +633,8 @@ export class RAGService {
 								}
 							}));
 							
-							// Store in image vector database
-							await this.imageVectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+							// Store in unified vector database
+							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 							
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
@@ -660,8 +652,8 @@ export class RAGService {
 				}
 			}
 
-			// Save the updated image index
-			await this.imageVectorDB.save();
+			// Save the updated database
+			await this.vectorDB.save();
 			LoggingUtility.log('Image processing complete');
 			
 		} catch (error) {
@@ -736,10 +728,8 @@ export class RAGService {
 				setTimeout(async () => {
 					try {
 						LoggingUtility.log(`File deleted: ${file.path}`);
-						await this.textVectorDB.removeFileDocuments(file.path);
-						await this.imageVectorDB.removeFileDocuments(file.path);
-						await this.textVectorDB.save();
-						await this.imageVectorDB.save();
+						await this.vectorDB.removeFileDocuments(file.path);
+						await this.vectorDB.save();
 					} catch (error) {
 						LoggingUtility.error(`Error processing file deletion: ${file.path}`, error);
 					}
@@ -938,7 +928,7 @@ export class RAGService {
 			if (operation === 'modify') {
 				// Check if file actually changed by comparing checksum
 				const newChecksum = await this.calculateCRC32(file);
-				const existingDocs = this.textVectorDB.getFileDocuments(file.path);
+				const existingDocs = this.vectorDB.getFileDocuments(file.path);
 
 				if (existingDocs.length > 0 && existingDocs[0].metadata.fileChecksum === newChecksum) {
 					// File content hasn't actually changed, skip update
@@ -948,16 +938,15 @@ export class RAGService {
 				
 				LoggingUtility.log(`File content changed: ${file.path} (checksum: ${newChecksum})`);
 				await this.updateFileEmbeddings(file);
-				await this.textVectorDB.save();
+				await this.vectorDB.save();
 				
 			} else if (operation === 'rename') {
 				LoggingUtility.log(`File renamed from ${oldPath} to ${file.path}`);
 				if (oldPath) {
-					await this.textVectorDB.removeFileDocuments(oldPath);
-					await this.imageVectorDB.removeFileDocuments(oldPath);
+					await this.vectorDB.removeFileDocuments(oldPath);
 				}
 				await this.updateFileEmbeddings(file);
-				await this.textVectorDB.save();
+				await this.vectorDB.save();
 			}
 			
 			// Yield control periodically during processing
@@ -1056,11 +1045,10 @@ export class RAGService {
 			}
 			
 			// Remove documents for files that no longer exist
-			await this.textVectorDB.removeObsoleteDocuments(existingFiles);
-			await this.imageVectorDB.removeObsoleteDocuments(existingFiles);
+			await this.vectorDB.removeObsoleteDocuments(existingFiles);
 			
 			// Find files that need updating
-			const filesToUpdate = this.textVectorDB.getFilesNeedingUpdate(fileStats);
+			const filesToUpdate = this.vectorDB.getFilesNeedingUpdate(fileStats);
 			
 			LoggingUtility.log(`Found ${filesToUpdate.length} markdown files that need updating out of ${files.length} total files`);
 			
@@ -1130,7 +1118,7 @@ export class RAGService {
 						
 						// Save periodically to avoid losing progress
 						if ((i + 1) % 10 === 0) {
-							await this.textVectorDB.save();
+							await this.vectorDB.save();
 						}
 						
 						// Yield control to the UI thread every few files to keep Obsidian responsive
@@ -1141,7 +1129,7 @@ export class RAGService {
 				}
 				
 				// Final save for markdown files
-				await this.textVectorDB.save();
+				await this.vectorDB.save();
 				
 				LoggingUtility.log(`Markdown file processing complete. Updated ${filesToUpdate.length} files with ${processedChunks} total chunks.`);
 			}
@@ -1197,7 +1185,7 @@ export class RAGService {
 								// Check if image has changed since last extraction by comparing checksum
 								const newImageChecksum = await this.calculateCRC32(imageFile);
 								
-								const existingImageDocs = this.imageVectorDB.getFileDocuments(imageFile.path);
+								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
 								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
 									// Image content hasn't changed, skip extraction
 									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
@@ -1240,11 +1228,11 @@ export class RAGService {
 											}
 										}));
 										
-										// Store in image vector database
-										await this.imageVectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+										// Store in unified vector database
+										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 										// Save periodically to avoid losing progress
 										if ((i + 1) % 2 === 0) {
-											await this.imageVectorDB.save();
+											await this.vectorDB.save();
 										}
 										
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
@@ -1263,8 +1251,8 @@ export class RAGService {
 							}
 						}
 						
-						// Save the updated image index after image processing
-						await this.imageVectorDB.save();
+						// Save the updated database after image processing
+						await this.vectorDB.save();
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
 					}
 				} else {
@@ -1321,9 +1309,8 @@ export class RAGService {
 			}
 			await this.ensureEmbeddingConnection();
 			
-			// Clear existing indexes completely (including images)
-			await this.textVectorDB.clear();
-			await this.imageVectorDB.clear();
+			// Clear existing database completely (including images)
+			await this.vectorDB.clear();
 			LoggingUtility.log('Cleared ALL existing vector indexes for complete rebuild');
 			
 			// Get all markdown files
@@ -1388,7 +1375,7 @@ export class RAGService {
 				
 				// Save periodically to avoid losing progress
 				if ((i + 1) % 10 === 0) {
-					await this.textVectorDB.save();
+					await this.vectorDB.save();
 				}
 				
 				// Yield control to the UI thread every few files to keep Obsidian responsive
@@ -1398,7 +1385,7 @@ export class RAGService {
 			}
 			
 			// Final save for markdown files
-			await this.textVectorDB.save();
+			await this.vectorDB.save();
 			
 			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
 			
@@ -1425,7 +1412,7 @@ export class RAGService {
 					if (!capabilities.supportsVision) {
 						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
 					} else {
-						// Process each image (no checksum check since we cleared the image index)
+						// Process each image (no checksum check since we cleared the database)
 						for (let i = 0; i < imageFiles.length; i++) {
 							if (this.indexingAbortController.signal.aborted) {
 								LoggingUtility.log('Image processing aborted by user');
@@ -1475,9 +1462,9 @@ export class RAGService {
 											}
 										}));
 										
-										// Store in image vector database
-										await this.imageVectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-										await this.imageVectorDB.save();
+										// Store in unified vector database
+										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+										await this.vectorDB.save();
 										
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 									}
@@ -1495,8 +1482,8 @@ export class RAGService {
 							}
 						}
 						
-						// Save the updated image index after image processing
-						await this.imageVectorDB.save();
+						// Save the updated database after image processing
+						await this.vectorDB.save();
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
 					}
 				} else {
@@ -1544,10 +1531,13 @@ export class RAGService {
 			}
 			await this.ensureEmbeddingConnection();
 			
-			// Clear existing text index completely, but preserve image index for checksum checking
-			await this.textVectorDB.clear();
-			// Don't clear image index - we'll check checksums to avoid reprocessing unchanged images
-			LoggingUtility.log('Cleared text vector index for complete rebuild, preserving image index for checksum checking');
+			// Clear existing markdown documents, but preserve image documents for checksum checking
+			// We'll delete only markdown documents to preserve image checksums
+			const db = (this.vectorDB as any).db;
+			if (db) {
+				db.prepare('DELETE FROM documents WHERE source_type = ?').run('markdown');
+				LoggingUtility.log('Cleared markdown documents for rebuild, preserving image documents for checksum checking');
+			}
 			
 			// Get all markdown files
 			const files = this.app.vault.getMarkdownFiles();
@@ -1611,7 +1601,7 @@ export class RAGService {
 				
 				// Save periodically to avoid losing progress
 				if ((i + 1) % 10 === 0) {
-					await this.textVectorDB.save();
+					await this.vectorDB.save();
 				}
 				
 				// Yield control to the UI thread every few files to keep Obsidian responsive
@@ -1621,7 +1611,7 @@ export class RAGService {
 			}
 			
 			// Final save for markdown files
-			await this.textVectorDB.save();
+			await this.vectorDB.save();
 			
 			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
 			
@@ -1667,7 +1657,7 @@ export class RAGService {
 								// Check if image has changed since last extraction by comparing checksum
 								const newImageChecksum = await this.calculateCRC32(imageFile);
 								
-								const existingImageDocs = this.imageVectorDB.getFileDocuments(imageFile.path);
+								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
 								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
 									// Image content hasn't changed, skip extraction
 									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
@@ -1710,9 +1700,9 @@ export class RAGService {
 											}
 										}));
 										
-										// Store in image vector database
-										await this.imageVectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-										await this.imageVectorDB.save();
+										// Store in unified vector database
+										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+										await this.vectorDB.save();
 										
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 									}
@@ -1730,8 +1720,8 @@ export class RAGService {
 							}
 						}
 						
-						// Save the updated image index after image processing
-						await this.imageVectorDB.save();
+						// Save the updated database after image processing
+						await this.vectorDB.save();
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
 					}
 				} else {
@@ -1827,8 +1817,8 @@ export class RAGService {
 				}
 			}));
 			
-			// Store in text vector database
-			await this.textVectorDB.upsertFileDocuments(file.path, chunkDocuments);
+			// Store in unified vector database
+			await this.vectorDB.upsertFileDocuments(file.path, chunkDocuments);
 			
 			LoggingUtility.log(`Updated ${chunkDocuments.length} chunk embeddings for file: ${file.path}`);
 			
@@ -1896,8 +1886,8 @@ export class RAGService {
 				chunkDocuments.push(chunkDocument);
 			}
 			
-			// Store in text vector database
-			await this.textVectorDB.upsertFileDocuments(file.path, chunkDocuments);
+			// Store in unified vector database
+			await this.vectorDB.upsertFileDocuments(file.path, chunkDocuments);
 			
 			// Report final progress
 			if (progressCallback) {
@@ -1918,14 +1908,8 @@ export class RAGService {
 		// Generate query embedding
 		const queryEmbedding = await this.generateEmbedding(query);
 		
-		// Search in both vector databases for paragraphs
-		const textResults = this.textVectorDB.search(queryEmbedding, limit, threshold);
-		const imageResults = this.imageVectorDB.search(queryEmbedding, limit, threshold);
-		
-		// Combine and sort results by similarity
-		const allResults = [...textResults, ...imageResults]
-			.sort((a, b) => b.similarity - a.similarity)
-			.slice(0, limit);
+		// Search in unified vector database
+		const allResults = this.vectorDB.search(queryEmbedding, limit, threshold);
 		
 		// Convert to RAGSearchResult format
 		const ragResults: RAGSearchResult[] = [];
@@ -1955,15 +1939,13 @@ export class RAGService {
 		// Generate query embedding
 		const queryEmbedding = await this.generateEmbedding(query);
 		
-		// Search in both vector databases for paragraphs grouped by file
-		const textResultsMap = this.textVectorDB.searchGroupedByFile(queryEmbedding, maxFiles, maxParagraphsPerFile, threshold);
-		const imageResultsMap = this.imageVectorDB.searchGroupedByFile(queryEmbedding, maxFiles, maxParagraphsPerFile, threshold);
+		// Search in unified vector database grouped by file
+		const resultsMap = this.vectorDB.searchGroupedByFile(queryEmbedding, maxFiles, maxParagraphsPerFile, threshold);
 		
-		// Combine results from both databases
+		// Convert to RAGSearchResult format
 		const ragResultsMap = new Map<string, RAGSearchResult[]>();
 		
-		// Process text results
-		for (const [filePath, paragraphResults] of textResultsMap) {
+		for (const [filePath, paragraphResults] of resultsMap) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile) {
 				const ragResults = paragraphResults.map(result => ({
@@ -1977,33 +1959,6 @@ export class RAGService {
 				}));
 				
 				ragResultsMap.set(filePath, ragResults);
-			}
-		}
-		
-		// Process image results
-		for (const [filePath, paragraphResults] of imageResultsMap) {
-			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (file instanceof TFile) {
-				const ragResults = paragraphResults.map(result => ({
-					file: file,
-					content: result.document.metadata.paragraphText,
-					similarity: result.similarity,
-					title: result.document.metadata.title,
-					path: result.document.metadata.filePath,
-					paragraphIndex: result.document.metadata.paragraphIndex,
-					matchedParagraph: result.document.metadata.paragraphText
-				}));
-				
-				// If file already exists, combine results
-				if (ragResultsMap.has(filePath)) {
-					const existingResults = ragResultsMap.get(filePath)!;
-					const combinedResults = [...existingResults, ...ragResults]
-						.sort((a, b) => b.similarity - a.similarity)
-						.slice(0, maxParagraphsPerFile);
-					ragResultsMap.set(filePath, combinedResults);
-				} else {
-					ragResultsMap.set(filePath, ragResults);
-				}
 			}
 		}
 		
@@ -2089,26 +2044,51 @@ export class RAGService {
 		markdownFiles: number;
 		imageFiles: number;
 	} {
-		const textStats = this.textVectorDB.getStats();
-		const imageStats = this.imageVectorDB.getStats();
+		const stats = this.vectorDB.getStats();
 		
-		// Combine statistics from both databases
-		const totalDocuments = textStats.documentCount + imageStats.documentCount;
-		const totalFiles = textStats.fileCount + imageStats.fileCount;
-		const totalSize = textStats.sizeInBytes + imageStats.sizeInBytes;
-		
-		// Use the most recent update time
-		const lastUpdated = textStats.lastUpdated > imageStats.lastUpdated ? textStats.lastUpdated : imageStats.lastUpdated;
+		// Get breakdown by source type
+		if (!this.vectorDB) {
+			return {
+				documentCount: 0,
+				fileCount: 0,
+				lastUpdated: new Date(),
+				sizeInBytes: 0,
+				markdownDocuments: 0,
+				imageDocuments: 0,
+				markdownFiles: 0,
+				imageFiles: 0
+			};
+		}
+
+		// Get counts by source type from database
+		const db = (this.vectorDB as any).db;
+		if (!db) {
+			return {
+				documentCount: stats.documentCount,
+				fileCount: stats.fileCount,
+				lastUpdated: stats.lastUpdated,
+				sizeInBytes: stats.sizeInBytes,
+				markdownDocuments: 0,
+				imageDocuments: 0,
+				markdownFiles: 0,
+				imageFiles: 0
+			};
+		}
+
+		const markdownCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
+		const imageCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
+		const markdownFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
+		const imageFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
 		
 		return {
-			documentCount: totalDocuments,
-			fileCount: totalFiles,
-			lastUpdated: lastUpdated,
-			sizeInBytes: totalSize,
-			markdownDocuments: textStats.documentCount,
-			imageDocuments: imageStats.documentCount,
-			markdownFiles: textStats.fileCount,
-			imageFiles: imageStats.fileCount
+			documentCount: stats.documentCount,
+			fileCount: stats.fileCount,
+			lastUpdated: stats.lastUpdated,
+			sizeInBytes: stats.sizeInBytes,
+			markdownDocuments: markdownCount.count,
+			imageDocuments: imageCount.count,
+			markdownFiles: markdownFileCount.count,
+			imageFiles: imageFileCount.count
 		};
 	}
 
@@ -2116,9 +2096,8 @@ export class RAGService {
 	 * Check if index is empty
 	 */
 	isIndexEmpty(): boolean {
-		const textStats = this.textVectorDB.getStats();
-		const imageStats = this.imageVectorDB.getStats();
-		return textStats.documentCount === 0 && imageStats.documentCount === 0;
+		const stats = this.vectorDB.getStats();
+		return stats.documentCount === 0;
 	}
 
 	/**
@@ -2136,6 +2115,15 @@ export class RAGService {
 	}
 
 	/**
+	 * Close database connection and cleanup resources
+	 */
+	async close(): Promise<void> {
+		if (this.vectorDB) {
+			await this.vectorDB.close();
+		}
+	}
+
+	/**
 	 * Get detailed status information about the RAG database
 	 */
 	getDetailedStatus(): {
@@ -2148,8 +2136,33 @@ export class RAGService {
 		totalDocuments: number;
 		totalFiles: number;
 	} {
-		const textStats = this.textVectorDB.getStats();
-		const imageStats = this.imageVectorDB.getStats();
+		const stats = this.getStats();
+		
+		// Get breakdown by source type
+		const db = (this.vectorDB as any).db;
+		let textStats = { documentCount: 0, fileCount: 0, lastUpdated: stats.lastUpdated, sizeInBytes: 0 };
+		let imageStats = { documentCount: 0, fileCount: 0, lastUpdated: stats.lastUpdated, sizeInBytes: 0 };
+		
+		if (db) {
+			const markdownCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
+			const imageCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
+			const markdownFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
+			const imageFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
+			
+			textStats = {
+				documentCount: markdownCount.count,
+				fileCount: markdownFileCount.count,
+				lastUpdated: stats.lastUpdated,
+				sizeInBytes: 0 // Size breakdown not easily available
+			};
+			
+			imageStats = {
+				documentCount: imageCount.count,
+				fileCount: imageFileCount.count,
+				lastUpdated: stats.lastUpdated,
+				sizeInBytes: 0 // Size breakdown not easily available
+			};
+		}
 		
 		return {
 			isInitialized: true,
@@ -2158,8 +2171,8 @@ export class RAGService {
 			imageStats,
 			imageTextExtractorAvailable: !!this.imageTextExtractor,
 			imageProcessingEnabled: this.settings?.enableImageTextExtraction ?? false,
-			totalDocuments: textStats.documentCount + imageStats.documentCount,
-			totalFiles: textStats.fileCount + imageStats.fileCount
+			totalDocuments: stats.documentCount,
+			totalFiles: stats.fileCount
 		};
 	}
 } 

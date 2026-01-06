@@ -142,9 +142,10 @@ export default class LocalLLMPlugin extends Plugin {
 	async onunload() {
 		LoggingUtility.log('Unloading Private AI Chat plugin');
 		
-		// Stop RAG file watcher
+		// Stop RAG file watcher and close database
 		if (this.ragService) {
 			this.ragService.stopFileWatcher();
+			await this.ragService.close();
 		}
 	}
 
