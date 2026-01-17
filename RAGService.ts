@@ -1,4 +1,4 @@
-import { App, TFile, EventRef, Events, Notice, ProgressBarComponent } from 'obsidian';
+import { App, TFile, EventRef, Events, Notice, ProgressBarComponent, Plugin, FileSystemAdapter } from 'obsidian';
 import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from './UnifiedVectorDatabase';
 import { LoggingUtility } from './LoggingUtility';
 import { SearchResult } from './SearchService';
@@ -64,8 +64,30 @@ export class RAGService {
 	
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
-		const dbPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/embeddings.db`;
-		LoggingUtility.log('RAGService constructor called with dbPath:', path.resolve(dbPath));
+		
+		// Construct the database path in the plugin's data directory
+		// Get vault root using FileSystemAdapter.getBasePath() for absolute path
+		const configDir = this.app.vault.configDir; // e.g., ".obsidian"
+		const pluginFolderName = 'ObsidianPrivateAI';
+		
+		// Get the absolute vault root path
+		const adapter = this.app.vault.adapter;
+		let vaultRoot: string;
+		
+		if (adapter instanceof FileSystemAdapter) {
+			// Desktop: use getBasePath() to get absolute vault root
+			vaultRoot = adapter.getBasePath();
+		} else {
+			// Mobile or other adapter: configDir should already be absolute, or we need a fallback
+			// For now, try to use configDir as-is if it's absolute, otherwise resolve it
+			vaultRoot = path.isAbsolute(configDir) ? path.dirname(configDir) : path.resolve('.').replace(/\.obsidian.*$/, '');
+		}
+		
+		// Construct the full path to the database
+		const absoluteConfigDir = path.join(vaultRoot, configDir);
+		const dbPath = path.join(absoluteConfigDir, 'plugins', pluginFolderName, 'vector-index', 'embeddings.db');
+		
+		LoggingUtility.log('RAGService constructor called with dbPath:', dbPath);
 		this.vectorDB = new UnifiedVectorDatabase(this.app, dbPath);
 		this.embeddingService = new EmbeddingService(embeddingConfig);
 		this.initOptions = {
