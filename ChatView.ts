@@ -648,7 +648,7 @@ export class ChatView extends ItemView {
 			
 			// Create header text
 			const headerText = notesHeader.createEl('span', {
-				text: `📚 Used ${deduplicatedNotes.length} note${deduplicatedNotes.length > 1 ? 's' : ''} as context:`
+				text: `📚 Used ${deduplicatedNotes.length} note${deduplicatedNotes.length !== 1 ? 's' : ''} as context:`
 			});
 			
 			// Create toggle link
