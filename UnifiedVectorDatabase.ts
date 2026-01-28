@@ -1,6 +1,6 @@
 import { LoggingUtility } from './LoggingUtility';
 import { App } from 'obsidian';
-import Database from 'better-sqlite3';
+import initSqlJs from '@webreflection/sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -27,7 +27,7 @@ export interface VectorSearchResult {
 }
 
 export class UnifiedVectorDatabase {
-	private db: Database.Database | null = null;
+	private db: any | null = null;
 	private dbPath: string;
 	private app: App;
 	private dimension: number = 0;
@@ -50,10 +50,12 @@ export class UnifiedVectorDatabase {
 			}
 
 			// Open database connection
-			this.db = new Database(this.dbPath);
+			const dbFile = fs.readFileSync(`${this.dbPath}`);
+			const SQL = await initSqlJs();
+  			this.db = new SQL.Database(dbFile);
 			
 			// Enable WAL mode for better concurrency
-			this.db.pragma('journal_mode = WAL');
+			this.db.run("PRAGMA journal_mode = WAL");
 			
 			// Create the documents table if it doesn't exist
 			this.db.exec(`
@@ -522,8 +524,8 @@ export class UnifiedVectorDatabase {
 	 * Save is a no-op for SQLite (data is persisted immediately)
 	 */
 	async save(): Promise<void> {
-		// SQLite persists data immediately, so this is a no-op
-		// Kept for API compatibility
+		let dbFile = this.db.export();
+		fs.writeFileSync(`${this.dbPath}`, dbFile);
 	}
 }
 
