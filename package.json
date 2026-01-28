@@ -29,7 +29,7 @@
   "homepage": "https://github.com/gabosgab/ObsidianPrivateAI#readme",
   "dependencies": {
     "crc-32": "^1.2.2",
-    "better-sqlite3": "^11.6.0"
+    "@webreflection/sql.js": "^0.3.4"
   },
   "devDependencies": {
     "@types/node": "^20.19.1",
