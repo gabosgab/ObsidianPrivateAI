@@ -1255,7 +1255,7 @@ export class RAGService {
 							}
 
 							try {
-								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+								LoggingUtility.log(`Checking image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 
 								// Check if image has changed since last extraction by comparing checksum
 								const newImageChecksum = await this.calculateCRC32(imageFile);
@@ -1269,7 +1269,7 @@ export class RAGService {
 									const existingChecksum = existingImageDocs[0].metadata.fileChecksum;
 									if (existingChecksum === newImageChecksum) {
 										// Image content hasn't changed, skip extraction
-										// LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path}`);
+										LoggingUtility.log(`Image unchanged since last extraction, skipping: ${imageFile.path}`);
 										continue;
 									} else {
 										LoggingUtility.log(`Image content changed: ${imageFile.path} (new checksum: ${newImageChecksum}, old: ${existingChecksum})`);
@@ -1572,7 +1572,7 @@ export class RAGService {
 							}
 
 							try {
-								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+								LoggingUtility.log(`Checking image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
