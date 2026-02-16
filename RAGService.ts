@@ -120,8 +120,14 @@ export class RAGService {
 			throw new Error('Image processing is disabled in settings');
 		}
 
+
 		if (!this.imageTextExtractor) {
 			throw new Error('Image text extractor not initialized');
+		}
+
+		// Ensure we don't overwrite an existing controller if this is a nested call
+		if (!this.indexingAbortController || this.indexingAbortController?.signal.aborted) {
+			this.indexingAbortController = new AbortController();
 		}
 
 		try {
@@ -170,11 +176,18 @@ export class RAGService {
 					progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
 				}
 
+				if (this.indexingAbortController?.signal.aborted) {
+					LoggingUtility.log('Image processing aborted by user');
+					break;
+				}
+
 				try {
 					LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 
 					// Extract text from image
 					const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+
+					if (this.indexingAbortController?.signal.aborted) break;
 
 					if (result.success && result.extractedText.trim()) {
 						// Create a virtual document for the extracted text
@@ -210,6 +223,10 @@ export class RAGService {
 							// Store in unified vector database
 							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 
+							if (!this.indexingAbortController?.signal.aborted) {
+								await this.vectorDB.save();
+							}
+
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
 					} else {
@@ -227,7 +244,9 @@ export class RAGService {
 			}
 
 			// Save the updated database
-			await this.vectorDB.save();
+			if (!this.indexingAbortController?.signal.aborted) {
+				await this.vectorDB.save();
+			}
 
 			const stats = this.getStats();
 			LoggingUtility.log(`Manual image processing complete. Total: ${stats.documentCount} paragraph documents (${stats.markdownDocuments} markdown, ${stats.imageDocuments} image) across ${stats.fileCount} files (${stats.markdownFiles} markdown, ${stats.imageFiles} image)`);
@@ -1020,13 +1039,19 @@ export class RAGService {
 
 		this.isIndexing = true;
 		this.progressCallback = progressCallback;
-		this.indexingAbortController = new AbortController();
+
+		// Ensure we don't overwrite an existing controller if this is a nested call
+		if (!this.indexingAbortController || this.indexingAbortController?.signal.aborted) {
+			this.indexingAbortController = new AbortController();
+		}
 
 		try {
 			// Verify embedding service connection before proceeding
 			if (this.progressCallback) {
 				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
 			}
+
+			if (this.indexingAbortController?.signal.aborted) return;
 			await this.ensureEmbeddingConnection();
 
 			// Get all markdown files
@@ -1043,7 +1068,7 @@ export class RAGService {
 			}
 
 			for (let i = 0; i < files.length; i++) {
-				if (this.indexingAbortController.signal.aborted) {
+				if (this.indexingAbortController?.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
 					return;
 				}
@@ -1065,6 +1090,14 @@ export class RAGService {
 				if (i % 10 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
+			}
+
+			// FIX: Add image files to existingFiles set so they aren't removed as obsolete
+			// The original code only added markdown files, causing removeObsoleteDocuments to delete all image entries
+			const allFiles = this.app.vault.getFiles();
+			const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
+			for (const img of imageFiles) {
+				existingFiles.add(img.path);
 			}
 
 			// Remove documents for files that no longer exist
@@ -1115,7 +1148,7 @@ export class RAGService {
 				let processedChunks = 0;
 
 				for (let i = 0; i < filesToUpdate.length; i++) {
-					if (this.indexingAbortController.signal.aborted) {
+					if (this.indexingAbortController?.signal.aborted) {
 						LoggingUtility.log('Indexing aborted by user');
 						break;
 					}
@@ -1130,6 +1163,13 @@ export class RAGService {
 							this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
 						}
 
+
+						// Check for abort signal before proceeding with database operations
+						if (this.indexingAbortController?.signal.aborted) {
+							LoggingUtility.log('Indexing aborted by user');
+							return;
+						}
+
 						await this.updateFileEmbeddingsWithProgress(file, (chunkIndex, totalFileChunks) => {
 							if (this.progressCallback) {
 								const currentChunk = processedChunks + chunkIndex + 1;
@@ -1138,6 +1178,12 @@ export class RAGService {
 						});
 
 						processedChunks += chunkCount;
+
+						// Check abort signal again before saving
+						if (this.indexingAbortController?.signal.aborted) {
+							LoggingUtility.log('Indexing aborted by user');
+							return;
+						}
 
 						// Save periodically to avoid losing progress
 						if ((i + 1) % 10 === 0) {
@@ -1149,6 +1195,12 @@ export class RAGService {
 							await new Promise(resolve => setTimeout(resolve, 0));
 						}
 					}
+				}
+
+				// Check abort signal before final save
+				if (this.indexingAbortController?.signal.aborted) {
+					LoggingUtility.log('Indexing aborted by user');
+					return;
 				}
 
 				// Final save for markdown files
@@ -1191,7 +1243,7 @@ export class RAGService {
 					} else {
 						// Process each image
 						for (let i = 0; i < imageFiles.length; i++) {
-							if (this.indexingAbortController.signal.aborted) {
+							if (this.indexingAbortController?.signal.aborted) {
 								LoggingUtility.log('Image processing aborted by user');
 								break;
 							}
@@ -1207,6 +1259,9 @@ export class RAGService {
 
 								// Check if image has changed since last extraction by comparing checksum
 								const newImageChecksum = await this.calculateCRC32(imageFile);
+
+								// Check abort after async operation
+								if (this.indexingAbortController?.signal.aborted) break;
 
 								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
 
@@ -1224,9 +1279,10 @@ export class RAGService {
 								}
 
 								// Extract text from image
-
-								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+
+								// Check abort after async operation
+								if (this.indexingAbortController?.signal.aborted) break;
 
 								if (result.success && result.extractedText.trim()) {
 									// Create a virtual document for the extracted text
@@ -1239,6 +1295,10 @@ export class RAGService {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
 										const embeddings = await this.embeddingService.generateEmbeddings(texts);
+
+										// Check abort after async operation
+										if (this.indexingAbortController?.signal.aborted) break;
+
 										const fileChecksum = await this.calculateCRC32(imageFile);
 
 										// Create chunk documents for the image
@@ -1283,8 +1343,10 @@ export class RAGService {
 						}
 
 						// Save the updated database after image processing
-						await this.vectorDB.save();
-						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+						if (!this.indexingAbortController?.signal.aborted) {
+							await this.vectorDB.save();
+							LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+						}
 					}
 				} else {
 					LoggingUtility.log('No image files found in vault');
@@ -1292,6 +1354,8 @@ export class RAGService {
 			} else {
 				LoggingUtility.log('Image processing skipped - extractor not available or disabled');
 			}
+
+			if (this.indexingAbortController?.signal.aborted) return;
 
 			const stats = this.getStats();
 			LoggingUtility.log(`Indexing complete. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files (including images)`);
@@ -1317,7 +1381,42 @@ export class RAGService {
 	cancelIndexing(): void {
 		if (this.indexingAbortController) {
 			this.indexingAbortController.abort();
+			this.indexingAbortController = undefined;
 		}
+		this.isIndexing = false;
+	}
+
+	/**
+	 * Shutdown the service, cancelling all operations and closing the database
+	 */
+	async shutdown(): Promise<void> {
+		LoggingUtility.log('Shutting down RAG Service...');
+
+		// 1. Stop file watcher
+		this.stopFileWatcher();
+
+		// 2. Abort any ongoing indexing or image processing
+		if (this.indexingAbortController) {
+			LoggingUtility.log('Aborting ongoing indexing/processing...');
+			this.indexingAbortController.abort();
+			this.indexingAbortController = undefined;
+		}
+		this.isIndexing = false;
+
+		// 3. Clear any pending timeouts
+		for (const timeout of this.fileUpdateQueue.values()) {
+			clearTimeout(timeout);
+		}
+		this.fileUpdateQueue.clear();
+
+		if (this.activeFileCheckInterval) {
+			clearInterval(this.activeFileCheckInterval);
+			this.activeFileCheckInterval = undefined;
+		}
+
+		// 4. Close the database
+		await this.vectorDB.close();
+		LoggingUtility.log('RAG Service shutdown complete');
 	}
 
 	/**
@@ -1331,13 +1430,19 @@ export class RAGService {
 
 		this.isIndexing = true;
 		this.progressCallback = progressCallback;
-		this.indexingAbortController = new AbortController();
+
+		// Ensure we don't overwrite an existing controller if this is a nested call (shouldn't happen with isIndexing check, but safe)
+		if (!this.indexingAbortController || this.indexingAbortController?.signal.aborted) {
+			this.indexingAbortController = new AbortController();
+		}
 
 		try {
 			// Verify embedding service connection before proceeding
 			if (this.progressCallback) {
 				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
 			}
+
+			if (this.indexingAbortController?.signal.aborted) return;
 			await this.ensureEmbeddingConnection();
 
 			// Clear existing database completely (including images)
@@ -1383,7 +1488,7 @@ export class RAGService {
 			let processedChunks = 0;
 
 			for (let i = 0; i < files.length; i++) {
-				if (this.indexingAbortController.signal.aborted) {
+				if (this.indexingAbortController?.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
 					break;
 				}
@@ -1402,10 +1507,17 @@ export class RAGService {
 					}
 				});
 
+				// Check for abort signal before proceeding with database operations
+				if (this.indexingAbortController?.signal.aborted) {
+					LoggingUtility.log('Indexing aborted by user');
+					break;
+				}
+
 				processedChunks += chunkCount;
 
 				// Save periodically to avoid losing progress
 				if ((i + 1) % 10 === 0) {
+					if (this.indexingAbortController?.signal.aborted) break;
 					await this.vectorDB.save();
 				}
 
@@ -1416,7 +1528,9 @@ export class RAGService {
 			}
 
 			// Final save for markdown files
-			await this.vectorDB.save();
+			if (!this.indexingAbortController?.signal.aborted) {
+				await this.vectorDB.save();
+			}
 
 			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
 
@@ -1446,7 +1560,7 @@ export class RAGService {
 						// Process each image (no checksum check since we cleared the database)
 						// Process each image (no checksum check since we cleared the database)
 						for (let i = 0; i < imageFiles.length; i++) {
-							if (this.indexingAbortController.signal.aborted) {
+							if (this.indexingAbortController?.signal.aborted) {
 								LoggingUtility.log('Image processing aborted by user');
 								break;
 							}
@@ -1463,6 +1577,11 @@ export class RAGService {
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
 
+								// Check abort after async
+								if (this.indexingAbortController?.signal.aborted) break;
+
+
+
 								if (result.success && result.extractedText.trim()) {
 									// Create a virtual document for the extracted text
 									const extractedText = result.extractedText;
@@ -1474,6 +1593,9 @@ export class RAGService {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
 										const embeddings = await this.embeddingService.generateEmbeddings(texts);
+
+										if (this.indexingAbortController?.signal.aborted) break;
+
 										const checksum = await this.calculateCRC32(imageFile);
 
 										// Create chunk documents for the image
@@ -1515,7 +1637,9 @@ export class RAGService {
 						}
 
 						// Save the updated database after image processing
-						await this.vectorDB.save();
+						if (!this.indexingAbortController.signal.aborted) {
+							await this.vectorDB.save();
+						}
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
 					}
 				} else {
