@@ -47,7 +47,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	maxTokens: 10000,
 	temperature: 0.7,
 	// Default system prompt
-	systemPrompt: '',
+	systemPrompt: "You are a helpful assistant with access to the user's Obsidian vault. When provided with context from their notes, use that information to provide more accurate and relevant responses. Reference specific notes when appropriate, but focus on answering the user's question clearly and concisely.",
 	// Search defaults
 	searchMaxResults: 5,
 	searchContextPercentage: 50,
