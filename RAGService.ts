@@ -1,4 +1,4 @@
-import { App, TFile, EventRef, Events, Notice, ProgressBarComponent } from 'obsidian';
+import { App, TFile, EventRef, Events, Notice, ProgressBarComponent, Plugin, FileSystemAdapter } from 'obsidian';
 import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from './UnifiedVectorDatabase';
 import { LoggingUtility } from './LoggingUtility';
 import { SearchResult } from './SearchService';
@@ -61,11 +61,33 @@ export class RAGService {
 	private lastActiveFilePath: string | null = null;
 	private settings: LocalLLMSettings;
 	private imageProcessingEnabled: boolean = false;
-	
+
 	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
-		const dbPath = `${this.app.vault.configDir}/plugins/ObsidianPrivateAI/vector-index/embeddings.db`;
-		LoggingUtility.log('RAGService constructor called with dbPath:', path.resolve(dbPath));
+
+		// Construct the database path in the plugin's data directory
+		// Get vault root using FileSystemAdapter.getBasePath() for absolute path
+		const configDir = this.app.vault.configDir; // e.g., ".obsidian"
+		const pluginFolderName = 'ObsidianPrivateAI';
+
+		// Get the absolute vault root path
+		const adapter = this.app.vault.adapter;
+		let vaultRoot: string;
+
+		if (adapter instanceof FileSystemAdapter) {
+			// Desktop: use getBasePath() to get absolute vault root
+			vaultRoot = adapter.getBasePath();
+		} else {
+			// Mobile or other adapter: configDir should already be absolute, or we need a fallback
+			// For now, try to use configDir as-is if it's absolute, otherwise resolve it
+			vaultRoot = path.isAbsolute(configDir) ? path.dirname(configDir) : path.resolve('.').replace(/\.obsidian.*$/, '');
+		}
+
+		// Construct the full path to the database
+		const absoluteConfigDir = path.join(vaultRoot, configDir);
+		const dbPath = path.join(absoluteConfigDir, 'plugins', pluginFolderName, 'vector-index', 'embeddings.db');
+
+		LoggingUtility.log('RAGService constructor called with dbPath:', dbPath);
 		this.vectorDB = new UnifiedVectorDatabase(this.app, dbPath);
 		this.embeddingService = new EmbeddingService(embeddingConfig);
 		this.initOptions = {
@@ -106,7 +128,7 @@ export class RAGService {
 			// Get all files in the vault first for debugging
 			const allFiles = this.app.vault.getFiles();
 			LoggingUtility.log(`Total files in vault: ${allFiles.length}`);
-			
+
 			// Log file types for debugging
 			const fileTypes = new Map<string, number>();
 			allFiles.forEach(file => {
@@ -114,16 +136,16 @@ export class RAGService {
 				fileTypes.set(ext, (fileTypes.get(ext) || 0) + 1);
 			});
 			LoggingUtility.log('File types in vault:', Object.fromEntries(fileTypes));
-			
+
 			// Get all image files in the vault
 			const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
 			LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
-			
+
 			// Log the first few image files for debugging
 			if (imageFiles.length > 0) {
 				LoggingUtility.log('First few image files:', imageFiles.slice(0, 5).map(f => f.path));
 			}
-			
+
 			if (imageFiles.length === 0) {
 				new Notice('No image files found in vault');
 				return;
@@ -135,7 +157,7 @@ export class RAGService {
 			LoggingUtility.log('Checking vision capabilities...');
 			const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
 			LoggingUtility.log('Vision capabilities result:', capabilities);
-			
+
 			if (!capabilities.supportsVision) {
 				throw new Error(`Your current LLM model does not support vision capabilities. To process images in your Obsidian vault, you need to use a vision model like Gemma 3. Please switch to a vision-capable model in LM Studio and try again.`);
 			}
@@ -143,30 +165,30 @@ export class RAGService {
 			// Process each image with progress reporting
 			for (let i = 0; i < imageFiles.length; i++) {
 				const imageFile = imageFiles[i];
-				
+
 				if (progressCallback) {
 					progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
 				}
-				
+
 				try {
 					LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-					
+
 					// Extract text from image
 					const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-					
+
 					if (result.success && result.extractedText.trim()) {
 						// Create a virtual document for the extracted text
 						const extractedText = result.extractedText;
-						
+
 						// Split extracted text into chunks
 						const chunks = this.splitIntoParagraphs(extractedText);
-						
+
 						if (chunks.length > 0) {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
 							const embeddings = await this.embeddingService.generateEmbeddings(texts);
 							const checksum = await this.calculateCRC32(imageFile);
-							
+
 							// Create chunk documents for the image
 							const chunkDocuments = chunks.map((chunk, index) => ({
 								id: `${imageFile.path}#c${chunk.index}`,
@@ -184,21 +206,21 @@ export class RAGService {
 									extractedText: true
 								}
 							}));
-							
+
 							// Store in unified vector database
 							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-							
+
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
 					} else {
 						LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
 					}
-					
+
 					// Yield control periodically
 					if (i % 3 === 0) {
 						await new Promise(resolve => setTimeout(resolve, 0));
 					}
-					
+
 				} catch (error) {
 					LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
 				}
@@ -206,12 +228,12 @@ export class RAGService {
 
 			// Save the updated database
 			await this.vectorDB.save();
-			
+
 			const stats = this.getStats();
 			LoggingUtility.log(`Manual image processing complete. Total: ${stats.documentCount} paragraph documents (${stats.markdownDocuments} markdown, ${stats.imageDocuments} image) across ${stats.fileCount} files (${stats.markdownFiles} markdown, ${stats.imageFiles} image)`);
-			
+
 			new Notice(`Image processing complete! Processed ${imageFiles.length} images.`);
-			
+
 		} catch (error) {
 			LoggingUtility.error('Error during manual image processing:', error);
 			throw error;
@@ -235,17 +257,17 @@ export class RAGService {
 
 			// Load database first
 			await this.vectorDB.load();
-			
+
 			const stats = this.getStats();
 			LoggingUtility.log(`RAG Service initialized with ${stats.documentCount} total paragraph documents (${stats.markdownDocuments} markdown, ${stats.imageDocuments} image) across ${stats.fileCount} total files (${stats.markdownFiles} markdown, ${stats.imageFiles} image)`);
-			
+
 			// Automatic maintenance if enabled
 			if (this.initOptions.autoMaintenance) {
 				const isFreshInstall = await this.detectFreshInstall();
-				
+
 				if (isFreshInstall) {
 					LoggingUtility.log('Fresh install detected, starting automatic index rebuild...');
-					
+
 					if (this.initOptions.backgroundIndexing) {
 						// Run in background without blocking initialization
 						this.runBackgroundMaintenance(MaintenanceOperation.REBUILD);
@@ -255,7 +277,7 @@ export class RAGService {
 					}
 				} else {
 					LoggingUtility.log('Existing installation detected, running smart update...');
-					
+
 					if (this.initOptions.backgroundIndexing) {
 						// Run in background without blocking initialization
 						this.runBackgroundMaintenance(MaintenanceOperation.UPDATE);
@@ -281,22 +303,22 @@ export class RAGService {
 		try {
 			// Ensure database is loaded before checking stats
 			await this.vectorDB.load();
-			
+
 			const stats = this.vectorDB.getStats();
 			const totalDocuments = stats.documentCount;
 			const totalFiles = stats.fileCount;
-			
+
 			LoggingUtility.log(`Fresh install detection: ${totalDocuments} total documents, ${totalFiles} indexed files`);
-			
+
 			// Consider it fresh if there are no documents AND no files indexed
 			const isFresh = totalDocuments === 0 && totalFiles === 0;
-			
+
 			if (isFresh) {
 				LoggingUtility.log('Fresh install detected - no documents or files found');
 			} else {
 				LoggingUtility.log(`Existing installation detected - ${totalDocuments} documents across ${totalFiles} files`);
 			}
-			
+
 			return isFresh;
 		} catch (error) {
 			LoggingUtility.warn('Error detecting fresh install, assuming fresh:', error);
@@ -312,13 +334,13 @@ export class RAGService {
 		setTimeout(async () => {
 			try {
 				const progressCallback = this.createAutoMaintenanceProgressCallback();
-				
+
 				if (operation === MaintenanceOperation.REBUILD) {
 					await this.forceRebuildIndex(progressCallback);
 				} else {
 					await this.buildIndex(progressCallback);
 				}
-				
+
 				// Notify completion
 				if (this.initOptions.completionCallback) {
 					this.initOptions.completionCallback();
@@ -346,7 +368,7 @@ export class RAGService {
 			if (this.initOptions.progressCallback) {
 				this.initOptions.progressCallback(current, total, message);
 			}
-			
+
 			// Log progress but don't show UI progress in silent mode
 			if (!this.initOptions.silentMode && (current % 10 === 0 || current === total)) {
 				LoggingUtility.log(`Auto-maintenance progress: ${current}/${total} - ${message}`);
@@ -376,27 +398,27 @@ export class RAGService {
 		const targetWords = 200;
 		const maxWords = 250; // Force break at this point
 		const chunks: ChunkContent[] = [];
-		
+
 		// Split into lines for processing
 		const lines = cleanContent.split('\n');
 		let currentChunk = '';
 		let currentWordCount = 0;
-		
+
 		for (let i = 0; i < lines.length; i++) {
 			const line = lines[i].trim();
-			
+
 			// Skip empty lines at the start of a chunk
 			if (currentChunk === '' && line === '') {
 				continue;
 			}
-			
+
 			const lineWordCount = line.split(/\s+/).filter(word => word.length > 0).length;
 			const wouldExceedTarget = currentWordCount + lineWordCount > targetWords;
 			const wouldExceedMax = currentWordCount + lineWordCount > maxWords;
-			
+
 			// Check if this line is a natural break point
 			const isNaturalBreak = this.isNaturalBreakPoint(line, lines[i + 1]);
-			
+
 			// Decide whether to start a new chunk
 			if (currentChunk !== '' && (wouldExceedMax || (wouldExceedTarget && isNaturalBreak))) {
 				// Finalize current chunk
@@ -407,7 +429,7 @@ export class RAGService {
 						index: chunks.length
 					});
 				}
-				
+
 				// Start new chunk
 				currentChunk = line;
 				currentWordCount = lineWordCount;
@@ -420,7 +442,7 @@ export class RAGService {
 				}
 				currentWordCount += lineWordCount;
 			}
-			
+
 			// Handle case where a single line exceeds max words
 			if (currentWordCount > maxWords) {
 				const cleanChunk = currentChunk.trim().replace(/\s+/g, ' ');
@@ -438,7 +460,7 @@ export class RAGService {
 				currentWordCount = 0;
 			}
 		}
-		
+
 		// Add final chunk if it exists
 		if (currentChunk.trim().length > 0) {
 			const cleanChunk = currentChunk.trim().replace(/\s+/g, ' ');
@@ -447,7 +469,7 @@ export class RAGService {
 				index: chunks.length
 			});
 		}
-		
+
 		// Filter out chunks that are too short to be meaningful
 		const meaningfulChunks = chunks.filter(chunk => {
 			const wordCount = chunk.text.split(/\s+/).filter(word => word.length > 0).length;
@@ -466,7 +488,7 @@ export class RAGService {
 		if (currentLine === '' && nextLine && nextLine.trim() !== '') {
 			return true;
 		}
-		
+
 		// Heading patterns
 		if (currentLine.match(/^#{1,6}\s+/) || // Markdown headings
 			currentLine.match(/^.+\n[=-]+$/) || // Underlined headings
@@ -474,32 +496,32 @@ export class RAGService {
 			currentLine.match(/^[-*+]\s+/)) { // Bullet points
 			return true;
 		}
-		
+
 		// End of bullet point series (current line is bullet, next is not)
 		if (currentLine.match(/^[-*+]\s+/) && nextLine && !nextLine.match(/^[-*+]\s+/) && nextLine.trim() !== '') {
 			return true;
 		}
-		
+
 		// End of numbered list series
 		if (currentLine.match(/^\d+\.\s+/) && nextLine && !nextLine.match(/^\d+\.\s+/) && nextLine.trim() !== '') {
 			return true;
 		}
-		
+
 		// Code blocks
 		if (currentLine.match(/^```/) || currentLine.match(/^~~~`/)) {
 			return true;
 		}
-		
+
 		// Horizontal rules
 		if (currentLine.match(/^[-*_]{3,}$/)) {
 			return true;
 		}
-		
+
 		// Block quotes
 		if (currentLine.match(/^>\s+/)) {
 			return true;
 		}
-		
+
 		return false;
 	}
 
@@ -511,16 +533,16 @@ export class RAGService {
 		if (words.length <= maxWords) {
 			return [chunk];
 		}
-		
+
 		const chunks: string[] = [];
 		const sentences = chunk.split(/[.!?]+\s+/);
-		
+
 		let currentChunk = '';
 		let currentWordCount = 0;
-		
+
 		for (const sentence of sentences) {
 			const sentenceWords = sentence.split(/\s+/).filter(word => word.length > 0).length;
-			
+
 			if (currentWordCount + sentenceWords > maxWords && currentChunk !== '') {
 				// Start new chunk
 				chunks.push(currentChunk.trim());
@@ -536,12 +558,12 @@ export class RAGService {
 				currentWordCount += sentenceWords;
 			}
 		}
-		
+
 		// Add final chunk
 		if (currentChunk.trim().length > 0) {
 			chunks.push(currentChunk.trim());
 		}
-		
+
 		// If we still have chunks that are too long, force split them
 		const finalChunks: string[] = [];
 		for (const chunkToCheck of chunks) {
@@ -556,7 +578,7 @@ export class RAGService {
 				finalChunks.push(chunkToCheck);
 			}
 		}
-		
+
 		return finalChunks;
 	}
 
@@ -568,7 +590,7 @@ export class RAGService {
 			LoggingUtility.log('Image text extraction is disabled, skipping image processing');
 			return;
 		}
-		
+
 		if (!this.imageTextExtractor) {
 			LoggingUtility.log('Image text extractor not initialized, skipping image processing');
 			return;
@@ -577,7 +599,7 @@ export class RAGService {
 		try {
 			// Get all image files in the vault
 			const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
-			
+
 			if (imageFiles.length === 0) {
 				LoggingUtility.log('No image files found in vault');
 				return;
@@ -595,26 +617,26 @@ export class RAGService {
 			// Process each image
 			for (let i = 0; i < imageFiles.length; i++) {
 				const imageFile = imageFiles[i];
-				
+
 				try {
 					LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-					
+
 					// Extract text from image
 					const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-					
+
 					if (result.success && result.extractedText.trim()) {
 						// Create a virtual document for the extracted text
 						const extractedText = result.extractedText;
-						
+
 						// Split extracted text into chunks
 						const chunks = this.splitIntoParagraphs(extractedText);
-						
+
 						if (chunks.length > 0) {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
 							const embeddings = await this.embeddingService.generateEmbeddings(texts);
 							const fileChecksum = await this.calculateCRC32(imageFile);
-							
+
 							// Create chunk documents for the image
 							const chunkDocuments = chunks.map((chunk, index) => ({
 								id: `${imageFile.path}#c${chunk.index}`,
@@ -632,21 +654,21 @@ export class RAGService {
 									extractedText: true
 								}
 							}));
-							
+
 							// Store in unified vector database
 							await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-							
+
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
 					} else {
 						LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
 					}
-					
+
 					// Yield control periodically
 					if (i % 5 === 0) {
 						await new Promise(resolve => setTimeout(resolve, 0));
 					}
-					
+
 				} catch (error) {
 					LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
 				}
@@ -655,7 +677,7 @@ export class RAGService {
 			// Save the updated database
 			await this.vectorDB.save();
 			LoggingUtility.log('Image processing complete');
-			
+
 		} catch (error) {
 			LoggingUtility.error('Error processing images in vault:', error);
 		}
@@ -704,7 +726,7 @@ export class RAGService {
 					this.pendingActiveFileUpdates.add(file.path);
 					return;
 				}
-				
+
 				// Queue the file update to run in background with debouncing
 				this.queueFileUpdate(file, 'modify');
 			}
@@ -723,7 +745,7 @@ export class RAGService {
 			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
 				// Remove from pending updates if it was there
 				this.pendingActiveFileUpdates.delete(file.path);
-				
+
 				// Process deletions immediately as they're quick and file is gone
 				setTimeout(async () => {
 					try {
@@ -758,17 +780,17 @@ export class RAGService {
 		try {
 			// Get the file that was previously active
 			const previousActiveFile = this.lastActiveFilePath;
-			
+
 			// Update to current active file
 			this.updateLastActiveFile();
-			
+
 			// Process the previously active file if it needs updating
 			if (previousActiveFile && this.pendingActiveFileUpdates.has(previousActiveFile)) {
 				const file = this.app.vault.getAbstractFileByPath(previousActiveFile);
 				if (file instanceof TFile) {
 					LoggingUtility.log(`Note switched, immediately processing previously active file: ${previousActiveFile}`);
 					this.pendingActiveFileUpdates.delete(previousActiveFile);
-					
+
 					// Process immediately since the file is no longer active
 					setTimeout(() => {
 						this.queueFileUpdate(file, 'modify');
@@ -815,14 +837,14 @@ export class RAGService {
 	 */
 	private async processPendingActiveFiles(): Promise<void> {
 		const filesToProcess: string[] = [];
-		
+
 		for (const filePath of this.pendingActiveFileUpdates) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile && !this.isFileCurrentlyActive(file)) {
 				filesToProcess.push(filePath);
 			}
 		}
-		
+
 		// Process files that are no longer active
 		for (const filePath of filesToProcess) {
 			this.pendingActiveFileUpdates.delete(filePath);
@@ -850,13 +872,13 @@ export class RAGService {
 		if (this.workspaceChangeRef) {
 			this.app.workspace.offref(this.workspaceChangeRef);
 		}
-		
+
 		// Clear any pending file update timers
 		for (const timeout of this.fileUpdateQueue.values()) {
 			clearTimeout(timeout);
 		}
 		this.fileUpdateQueue.clear();
-		
+
 		// Clear active file monitoring
 		if (this.activeFileCheckInterval) {
 			clearInterval(this.activeFileCheckInterval);
@@ -864,7 +886,7 @@ export class RAGService {
 		}
 		this.pendingActiveFileUpdates.clear();
 		this.lastActiveFilePath = null;
-		
+
 		LoggingUtility.log('File watcher stopped');
 	}
 
@@ -873,17 +895,17 @@ export class RAGService {
 	 */
 	private queueFileUpdate(file: TFile, operation: 'modify' | 'rename', oldPath?: string): void {
 		const filePath = file.path;
-		
+
 		// Clear existing timeout for this file if it exists
 		if (this.fileUpdateQueue.has(filePath)) {
 			clearTimeout(this.fileUpdateQueue.get(filePath)!);
 		}
-		
+
 		// Set new timeout to process the file update after a brief delay
 		const timeout = setTimeout(async () => {
 			try {
 				this.fileUpdateQueue.delete(filePath);
-				
+
 				// Double-check if file is still active before processing
 				if (operation === 'modify' && this.isFileCurrentlyActive(file)) {
 					LoggingUtility.log(`File became active during queue delay, skipping RAG update: ${file.path}`);
@@ -891,22 +913,23 @@ export class RAGService {
 					this.pendingActiveFileUpdates.add(file.path);
 					return;
 				}
-				
+
 				// Remove from pending active files if it was there
 				this.pendingActiveFileUpdates.delete(filePath);
-				
+
 				await this.processFileUpdateBackground(file, operation, oldPath);
 			} catch (error) {
 				LoggingUtility.error(`Error processing file update for ${filePath}:`, error);
 			}
 		}, 500); // 500ms debounce delay
-		
+
 		this.fileUpdateQueue.set(filePath, timeout);
 	}
 
 	private async calculateCRC32(file: TFile): Promise<string> {
 		const fileBinary = await this.app.vault.readBinary(file);
-		return CRC32.buf(new Uint8Array(fileBinary)).toString(16);
+		// Use unsigned integer for consistent hex string representation
+		return (CRC32.buf(new Uint8Array(fileBinary)) >>> 0).toString(16);
 	}
 
 	/**
@@ -935,11 +958,11 @@ export class RAGService {
 					LoggingUtility.log(`File modification detected but content unchanged: ${file.path}`);
 					return;
 				}
-				
+
 				LoggingUtility.log(`File content changed: ${file.path} (checksum: ${newChecksum})`);
 				await this.updateFileEmbeddings(file);
 				await this.vectorDB.save();
-				
+
 			} else if (operation === 'rename') {
 				LoggingUtility.log(`File renamed from ${oldPath} to ${file.path}`);
 				if (oldPath) {
@@ -948,10 +971,10 @@ export class RAGService {
 				await this.updateFileEmbeddings(file);
 				await this.vectorDB.save();
 			}
-			
+
 			// Yield control periodically during processing
 			await new Promise(resolve => setTimeout(resolve, 0));
-			
+
 		} finally {
 			this.isProcessingFileUpdates = false;
 		}
@@ -963,23 +986,23 @@ export class RAGService {
 	private async ensureEmbeddingConnection(): Promise<void> {
 		const maxRetries = 10;
 		const retryDelay = 2000; // 2 seconds between retries
-		
+
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			LoggingUtility.log(`Verifying embedding service connection (attempt ${attempt}/${maxRetries})...`);
-			
+
 			const connectionTest = await this.testEmbeddingConnection();
-			
+
 			if (connectionTest.success) {
 				LoggingUtility.log(`Embedding service connection verified successfully (${connectionTest.dimensions} dimensions)`);
 				return;
 			}
-			
+
 			LoggingUtility.warn(`Connection attempt ${attempt} failed: ${connectionTest.error}`);
-			
+
 			if (attempt === maxRetries) {
 				throw new Error(`Could not establish connection to LM Studio after ${maxRetries} attempts. Please ensure LM Studio is running and the embedding model is loaded. Last error: ${connectionTest.error}`);
 			}
-			
+
 			// Wait before next retry
 			LoggingUtility.log(`Waiting ${retryDelay}ms before next connection attempt...`);
 			await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -1005,30 +1028,30 @@ export class RAGService {
 				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
 			}
 			await this.ensureEmbeddingConnection();
-			
+
 			// Get all markdown files
 			const files = this.app.vault.getMarkdownFiles();
-			
+
 			LoggingUtility.log(`Starting to analyze ${files.length} markdown files for changes`);
-			
+
 			// Calculate checksums for all files to determine what needs updating
 			const fileStats = new Map<string, { checksum: string; lastModified: number; size: number }>();
 			const existingFiles = new Set<string>();
-			
+
 			if (this.progressCallback) {
 				this.progressCallback(0, files.length, 'Analyzing markdown files for changes...');
 			}
-			
+
 			for (let i = 0; i < files.length; i++) {
 				if (this.indexingAbortController.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
 					return;
 				}
-				
+
 				const file = files[i];
 				existingFiles.add(file.path);
-				
-				try {					
+
+				try {
 					fileStats.set(file.path, {
 						checksum: await this.calculateCRC32(file),
 						lastModified: file.stat.mtime,
@@ -1037,36 +1060,36 @@ export class RAGService {
 				} catch (error) {
 					LoggingUtility.warn(`Could not read file for checksum: ${file.path}`, error);
 				}
-				
+
 				// Yield control periodically
 				if (i % 10 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
 			}
-			
+
 			// Remove documents for files that no longer exist
 			await this.vectorDB.removeObsoleteDocuments(existingFiles);
-			
+
 			// Find files that need updating
 			const filesToUpdate = this.vectorDB.getFilesNeedingUpdate(fileStats);
-			
+
 			LoggingUtility.log(`Found ${filesToUpdate.length} markdown files that need updating out of ${files.length} total files`);
-			
+
 			if (filesToUpdate.length === 0) {
 				LoggingUtility.log('All markdown files are up to date, no indexing needed');
 			} else {
 				// Pre-calculate total chunks across all files that need updating
 				let totalChunks = 0;
 				const fileChunkCounts = new Map<string, number>();
-				
+
 				if (this.progressCallback) {
 					this.progressCallback(0, filesToUpdate.length, 'Calculating total chunks for markdown files...');
 				}
-				
+
 				for (let i = 0; i < filesToUpdate.length; i++) {
 					const filePath = filesToUpdate[i];
 					const file = this.app.vault.getAbstractFileByPath(filePath);
-					
+
 					if (file instanceof TFile) {
 						try {
 							const content = await this.app.vault.read(file);
@@ -1079,90 +1102,90 @@ export class RAGService {
 							fileChunkCounts.set(filePath, 0);
 						}
 					}
-					
+
 					// Yield control periodically during chunk counting
 					if (i % 10 === 0) {
 						await new Promise(resolve => setTimeout(resolve, 0));
 					}
 				}
-				
+
 				LoggingUtility.log(`Total chunks to process: ${totalChunks} across ${filesToUpdate.length} markdown files`);
-				
+
 				// Process markdown files and track chunk-level progress
 				let processedChunks = 0;
-				
+
 				for (let i = 0; i < filesToUpdate.length; i++) {
 					if (this.indexingAbortController.signal.aborted) {
 						LoggingUtility.log('Indexing aborted by user');
 						break;
 					}
-					
+
 					const filePath = filesToUpdate[i];
 					const file = this.app.vault.getAbstractFileByPath(filePath);
-					
+
 					if (file instanceof TFile) {
 						const chunkCount = fileChunkCounts.get(filePath) || 0;
-						
+
 						if (this.progressCallback && chunkCount > 0) {
 							this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
 						}
-						
+
 						await this.updateFileEmbeddingsWithProgress(file, (chunkIndex, totalFileChunks) => {
 							if (this.progressCallback) {
 								const currentChunk = processedChunks + chunkIndex + 1;
 								this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
 							}
 						});
-						
+
 						processedChunks += chunkCount;
-						
+
 						// Save periodically to avoid losing progress
 						if ((i + 1) % 10 === 0) {
 							await this.vectorDB.save();
 						}
-						
+
 						// Yield control to the UI thread every few files to keep Obsidian responsive
 						if (i % 3 === 0) {
 							await new Promise(resolve => setTimeout(resolve, 0));
 						}
 					}
 				}
-				
+
 				// Final save for markdown files
 				await this.vectorDB.save();
-				
+
 				LoggingUtility.log(`Markdown file processing complete. Updated ${filesToUpdate.length} files with ${processedChunks} total chunks.`);
 			}
-			
+
 			// Process images LAST if image text extractor is available
 			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.settings.enableImageTextExtraction}`);
-			
+
 			if (this.imageTextExtractor && this.settings.enableImageTextExtraction) {
 				LoggingUtility.log('Starting image processing phase...');
-				
+
 				// Get all files in the vault first for debugging
 				const allFiles = this.app.vault.getFiles();
 				LoggingUtility.log(`Total files in vault during indexing: ${allFiles.length}`);
-				
+
 				// Get all image files in the vault
 				const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
 				LoggingUtility.log(`Found ${imageFiles.length} image files in vault during indexing`);
-				
+
 				// Log the first few image files for debugging
 				if (imageFiles.length > 0) {
 					LoggingUtility.log('First few image files found:', imageFiles.slice(0, 5).map(f => f.path));
 				}
-				
+
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
 						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
 					}
-					
+
 					// Check vision capabilities first
 					LoggingUtility.log('Checking LLM vision capabilities...');
 					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
 					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
-					
+
 					if (!capabilities.supportsVision) {
 						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
 					} else {
@@ -1172,44 +1195,52 @@ export class RAGService {
 								LoggingUtility.log('Image processing aborted by user');
 								break;
 							}
-							
+
 							const imageFile = imageFiles[i];
-							
+
 							if (this.progressCallback) {
 								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
 							}
-							
+
 							try {
 								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-								
+
 								// Check if image has changed since last extraction by comparing checksum
 								const newImageChecksum = await this.calculateCRC32(imageFile);
-								
+
 								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
-								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
-									// Image content hasn't changed, skip extraction
-									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
-									continue;
+
+								if (existingImageDocs.length > 0) {
+									const existingChecksum = existingImageDocs[0].metadata.fileChecksum;
+									if (existingChecksum === newImageChecksum) {
+										// Image content hasn't changed, skip extraction
+										// LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path}`);
+										continue;
+									} else {
+										LoggingUtility.log(`Image content changed: ${imageFile.path} (new checksum: ${newImageChecksum}, old: ${existingChecksum})`);
+									}
+								} else {
+									LoggingUtility.log(`New image detected: ${imageFile.path} (checksum: ${newImageChecksum})`);
 								}
-								
-								LoggingUtility.log(`Image content changed, extracting text: ${imageFile.path} (checksum: ${newImageChecksum})`);
+
+								// Extract text from image
 
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-								
+
 								if (result.success && result.extractedText.trim()) {
 									// Create a virtual document for the extracted text
 									const extractedText = result.extractedText;
-									
+
 									// Split extracted text into chunks
 									const chunks = this.splitIntoParagraphs(extractedText);
-									
+
 									if (chunks.length > 0) {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
 										const embeddings = await this.embeddingService.generateEmbeddings(texts);
 										const fileChecksum = await this.calculateCRC32(imageFile);
-										
+
 										// Create chunk documents for the image
 										const chunkDocuments = chunks.map((chunk, index) => ({
 											id: `${imageFile.path}#c${chunk.index}`,
@@ -1227,30 +1258,30 @@ export class RAGService {
 												extractedText: true
 											}
 										}));
-										
+
 										// Store in unified vector database
 										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 										// Save periodically to avoid losing progress
 										if ((i + 1) % 2 === 0) {
 											await this.vectorDB.save();
 										}
-										
+
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 									}
 								} else {
 									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
 								}
-								
+
 								// Yield control periodically
 								if (i % 3 === 0) {
 									await new Promise(resolve => setTimeout(resolve, 0));
 								}
-								
+
 							} catch (error) {
 								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
 							}
 						}
-						
+
 						// Save the updated database after image processing
 						await this.vectorDB.save();
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
@@ -1261,10 +1292,10 @@ export class RAGService {
 			} else {
 				LoggingUtility.log('Image processing skipped - extractor not available or disabled');
 			}
-			
+
 			const stats = this.getStats();
 			LoggingUtility.log(`Indexing complete. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files (including images)`);
-			
+
 		} catch (error) {
 			LoggingUtility.error('Error during indexing:', error);
 			// Check if it's a connection error and show appropriate message
@@ -1308,27 +1339,27 @@ export class RAGService {
 				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
 			}
 			await this.ensureEmbeddingConnection();
-			
+
 			// Clear existing database completely (including images)
 			await this.vectorDB.clear();
 			LoggingUtility.log('Cleared ALL existing vector indexes for complete rebuild');
-			
+
 			// Get all markdown files
 			const files = this.app.vault.getMarkdownFiles();
-			
+
 			LoggingUtility.log(`Starting complete rebuild of ${files.length} markdown files`);
-			
+
 			// Pre-calculate total chunks across all files
 			let totalChunks = 0;
 			const fileChunkCounts = new Map<string, number>();
-			
+
 			if (this.progressCallback) {
 				this.progressCallback(0, files.length, 'Calculating total chunks for markdown files...');
 			}
-			
+
 			for (let i = 0; i < files.length; i++) {
 				const file = files[i];
-				
+
 				try {
 					const content = await this.app.vault.read(file);
 					const chunks = this.splitIntoParagraphs(content);
@@ -1339,105 +1370,106 @@ export class RAGService {
 					LoggingUtility.warn(`Could not read file for chunk calculation: ${file.path}`, error);
 					fileChunkCounts.set(file.path, 0);
 				}
-				
+
 				// Yield control periodically during chunk counting
 				if (i % 10 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
 			}
-			
+
 			LoggingUtility.log(`Total chunks to process: ${totalChunks} across ${files.length} markdown files`);
-			
+
 			// Process markdown files and track chunk-level progress
 			let processedChunks = 0;
-			
+
 			for (let i = 0; i < files.length; i++) {
 				if (this.indexingAbortController.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
 					break;
 				}
-				
+
 				const file = files[i];
 				const chunkCount = fileChunkCounts.get(file.path) || 0;
-				
+
 				if (this.progressCallback && chunkCount > 0) {
 					this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
 				}
-				
+
 				await this.updateFileEmbeddingsWithProgress(file, (chunkIndex: number, totalFileChunks: number) => {
 					if (this.progressCallback) {
 						const currentChunk = processedChunks + chunkIndex + 1;
 						this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
 					}
 				});
-				
+
 				processedChunks += chunkCount;
-				
+
 				// Save periodically to avoid losing progress
 				if ((i + 1) % 10 === 0) {
 					await this.vectorDB.save();
 				}
-				
+
 				// Yield control to the UI thread every few files to keep Obsidian responsive
 				if (i % 3 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
 			}
-			
+
 			// Final save for markdown files
 			await this.vectorDB.save();
-			
+
 			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
-			
+
 			// Process images LAST if image text extractor is available
 			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.settings.enableImageTextExtraction}`);
-			
+
 			if (this.imageTextExtractor && this.settings.enableImageTextExtraction) {
 				LoggingUtility.log('Starting image processing phase...');
-				
+
 				// Get all image files in the vault
 				const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
 				LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
-				
+
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
 						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
 					}
-					
+
 					// Check vision capabilities first
 					LoggingUtility.log('Checking LLM vision capabilities...');
 					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
 					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
-					
+
 					if (!capabilities.supportsVision) {
 						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
 					} else {
+						// Process each image (no checksum check since we cleared the database)
 						// Process each image (no checksum check since we cleared the database)
 						for (let i = 0; i < imageFiles.length; i++) {
 							if (this.indexingAbortController.signal.aborted) {
 								LoggingUtility.log('Image processing aborted by user');
 								break;
 							}
-							
+
 							const imageFile = imageFiles[i];
-							
+
 							if (this.progressCallback) {
 								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
 							}
-							
+
 							try {
 								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-								
+
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-								
+
 								if (result.success && result.extractedText.trim()) {
 									// Create a virtual document for the extracted text
 									const extractedText = result.extractedText;
-									
+
 									// Split extracted text into chunks
 									const chunks = this.splitIntoParagraphs(extractedText);
-									
+
 									if (chunks.length > 0) {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
@@ -1461,27 +1493,27 @@ export class RAGService {
 												extractedText: true
 											}
 										}));
-										
+
 										// Store in unified vector database
 										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 										await this.vectorDB.save();
-										
+
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 									}
 								} else {
 									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
 								}
-								
+
 								// Yield control periodically
 								if (i % 3 === 0) {
 									await new Promise(resolve => setTimeout(resolve, 0));
 								}
-								
+
 							} catch (error) {
 								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
 							}
 						}
-						
+
 						// Save the updated database after image processing
 						await this.vectorDB.save();
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
@@ -1492,10 +1524,10 @@ export class RAGService {
 			} else {
 				LoggingUtility.log('Image processing skipped - extractor not available or disabled');
 			}
-			
+
 			const stats = this.getStats();
 			LoggingUtility.log(`Complete rebuild finished. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files (including images)`);
-			
+
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);
 			// Check if it's a connection error and show appropriate message
@@ -1530,7 +1562,7 @@ export class RAGService {
 				this.progressCallback(0, 1, 'Verifying connection to LM Studio...');
 			}
 			await this.ensureEmbeddingConnection();
-			
+
 			// Clear existing markdown documents, but preserve image documents for checksum checking
 			// We'll delete only markdown documents to preserve image checksums
 			const db = (this.vectorDB as any).db;
@@ -1538,23 +1570,23 @@ export class RAGService {
 				db.prepare('DELETE FROM documents WHERE source_type = ?').run('markdown');
 				LoggingUtility.log('Cleared markdown documents for rebuild, preserving image documents for checksum checking');
 			}
-			
+
 			// Get all markdown files
 			const files = this.app.vault.getMarkdownFiles();
-			
+
 			LoggingUtility.log(`Starting complete rebuild of ${files.length} markdown files`);
-			
+
 			// Pre-calculate total chunks across all files
 			let totalChunks = 0;
 			const fileChunkCounts = new Map<string, number>();
-			
+
 			if (this.progressCallback) {
 				this.progressCallback(0, files.length, 'Calculating total chunks for markdown files...');
 			}
-			
+
 			for (let i = 0; i < files.length; i++) {
 				const file = files[i];
-				
+
 				try {
 					const content = await this.app.vault.read(file);
 					const chunks = this.splitIntoParagraphs(content);
@@ -1565,76 +1597,76 @@ export class RAGService {
 					LoggingUtility.warn(`Could not read file for chunk calculation: ${file.path}`, error);
 					fileChunkCounts.set(file.path, 0);
 				}
-				
+
 				// Yield control periodically during chunk counting
 				if (i % 10 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
 			}
-			
+
 			LoggingUtility.log(`Total chunks to process: ${totalChunks} across ${files.length} markdown files`);
-			
+
 			// Process markdown files and track chunk-level progress
 			let processedChunks = 0;
-			
+
 			for (let i = 0; i < files.length; i++) {
 				if (this.indexingAbortController.signal.aborted) {
 					LoggingUtility.log('Indexing aborted by user');
 					break;
 				}
-				
+
 				const file = files[i];
 				const chunkCount = fileChunkCounts.get(file.path) || 0;
-				
+
 				if (this.progressCallback && chunkCount > 0) {
 					this.progressCallback(processedChunks + 1, totalChunks, `Processing chunk 1 of ${chunkCount} chunks in ${file.basename}`);
 				}
-				
+
 				await this.updateFileEmbeddingsWithProgress(file, (chunkIndex: number, totalFileChunks: number) => {
 					if (this.progressCallback) {
 						const currentChunk = processedChunks + chunkIndex + 1;
 						this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
 					}
 				});
-				
+
 				processedChunks += chunkCount;
-				
+
 				// Save periodically to avoid losing progress
 				if ((i + 1) % 10 === 0) {
 					await this.vectorDB.save();
 				}
-				
+
 				// Yield control to the UI thread every few files to keep Obsidian responsive
 				if (i % 3 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
 			}
-			
+
 			// Final save for markdown files
 			await this.vectorDB.save();
-			
+
 			LoggingUtility.log(`Markdown file rebuild complete. Indexed ${processedChunks} total chunks across ${files.length} files.`);
-			
+
 			// Process images LAST if image text extractor is available
 			LoggingUtility.log(`Image processing check: extractor=${!!this.imageTextExtractor}, enabled=${this.imageProcessingEnabled}`);
-			
+
 			if (this.imageTextExtractor && this.settings.enableImageTextExtraction) {
 				LoggingUtility.log('Starting image processing phase...');
-				
+
 				// Get all image files in the vault
 				const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
 				LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
-				
+
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
 						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
 					}
-					
+
 					// Check vision capabilities first
 					LoggingUtility.log('Checking LLM vision capabilities...');
 					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
 					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
-					
+
 					if (!capabilities.supportsVision) {
 						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
 					} else {
@@ -1644,38 +1676,38 @@ export class RAGService {
 								LoggingUtility.log('Image processing aborted by user');
 								break;
 							}
-							
+
 							const imageFile = imageFiles[i];
-							
+
 							if (this.progressCallback) {
 								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
 							}
-							
+
 							try {
 								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-								
+
 								// Check if image has changed since last extraction by comparing checksum
 								const newImageChecksum = await this.calculateCRC32(imageFile);
-								
+
 								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
 								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
 									// Image content hasn't changed, skip extraction
 									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
 									continue;
 								}
-								
+
 								LoggingUtility.log(`Image content changed, extracting text: ${imageFile.path} (checksum: ${newImageChecksum})`);
 
 								// Extract text from image
 								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-								
+
 								if (result.success && result.extractedText.trim()) {
 									// Create a virtual document for the extracted text
 									const extractedText = result.extractedText;
-									
+
 									// Split extracted text into chunks
 									const chunks = this.splitIntoParagraphs(extractedText);
-									
+
 									if (chunks.length > 0) {
 										// Generate embeddings for chunks
 										const texts = chunks.map(c => c.text);
@@ -1699,27 +1731,27 @@ export class RAGService {
 												extractedText: true
 											}
 										}));
-										
+
 										// Store in unified vector database
 										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
 										await this.vectorDB.save();
-										
+
 										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 									}
 								} else {
 									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
 								}
-								
+
 								// Yield control periodically
 								if (i % 3 === 0) {
 									await new Promise(resolve => setTimeout(resolve, 0));
 								}
-								
+
 							} catch (error) {
 								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
 							}
 						}
-						
+
 						// Save the updated database after image processing
 						await this.vectorDB.save();
 						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
@@ -1730,10 +1762,10 @@ export class RAGService {
 			} else {
 				LoggingUtility.log('Image processing skipped - extractor not available or disabled');
 			}
-			
+
 			const stats = this.getStats();
 			LoggingUtility.log(`Complete rebuild finished. Total: ${stats.documentCount} paragraph documents across ${stats.fileCount} files (including images)`);
-			
+
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);
 			// Check if it's a connection error and show appropriate message
@@ -1756,13 +1788,13 @@ export class RAGService {
 		try {
 			// Clean up the text before sending to embedding service
 			const cleanText = text.replace(/\s+/g, ' ').trim();
-			
+
 			// Truncate if too long (most embedding models have token limits)
 			const maxLength = 8000; // Conservative limit
-			const truncatedText = cleanText.length > maxLength 
-				? cleanText.substring(0, maxLength) + '...' 
+			const truncatedText = cleanText.length > maxLength
+				? cleanText.substring(0, maxLength) + '...'
 				: cleanText;
-			
+
 			return await this.embeddingService.generateEmbedding(truncatedText);
 		} catch (error) {
 			LoggingUtility.error('Error generating embedding:', error);
@@ -1778,28 +1810,28 @@ export class RAGService {
 			const content = await this.app.vault.read(file);
 			const metadata = this.app.metadataCache.getFileCache(file);
 			const title = this.getFileTitle(file, metadata);
-			
+
 			// Calculate checksum from binary content
 			const checksum = await this.calculateCRC32(file);
-			
+
 			// Split content into chunks
 			const chunks = this.splitIntoParagraphs(content);
-			
+
 			if (chunks.length === 0) {
 				LoggingUtility.log(`No chunks found in file: ${file.path}`);
 				return;
 			}
-			
+
 			// Yield control briefly before starting embedding generation
 			await new Promise(resolve => setTimeout(resolve, 0));
-			
+
 			// Generate embeddings for all chunks
 			const texts = chunks.map(c => c.text);
 			const embeddings = await this.embeddingService.generateEmbeddings(texts);
-			
+
 			// Yield control after embedding generation
 			await new Promise(resolve => setTimeout(resolve, 0));
-			
+
 			// Create chunk documents
 			const chunkDocuments = chunks.map((chunk, index) => ({
 				id: `${file.path}#c${chunk.index}`,
@@ -1816,12 +1848,12 @@ export class RAGService {
 					sourceType: 'markdown' as const
 				}
 			}));
-			
+
 			// Store in unified vector database
 			await this.vectorDB.upsertFileDocuments(file.path, chunkDocuments);
-			
+
 			LoggingUtility.log(`Updated ${chunkDocuments.length} chunk embeddings for file: ${file.path}`);
-			
+
 		} catch (error) {
 			LoggingUtility.error(`Error updating embeddings for ${file.path}:`, error);
 		}
@@ -1835,37 +1867,37 @@ export class RAGService {
 			const content = await this.app.vault.read(file);
 			const metadata = this.app.metadataCache.getFileCache(file);
 			const title = this.getFileTitle(file, metadata);
-			
+
 			// Calculate checksum from binary content
 			const checksum = await this.calculateCRC32(file);
-			
+
 			// Split content into chunks
 			const chunks = this.splitIntoParagraphs(content);
-			
+
 			if (chunks.length === 0) {
 				LoggingUtility.log(`No chunks found in file: ${file.path}`);
 				return;
 			}
-			
+
 			// Generate embeddings for chunks one at a time with progress reporting
 			const chunkDocuments = [];
-			
+
 			for (let i = 0; i < chunks.length; i++) {
 				const chunk = chunks[i];
-				
+
 				// Report progress for current chunk
 				if (progressCallback) {
 					progressCallback(i, chunks.length);
 				}
-				
+
 				// Yield control briefly before each embedding generation
 				if (i % 5 === 0) {
 					await new Promise(resolve => setTimeout(resolve, 0));
 				}
-				
+
 				// Generate embedding for this chunk
 				const embedding = await this.generateEmbedding(chunk.text);
-				
+
 				// Create chunk document
 				const chunkDocument = {
 					id: `${file.path}#c${chunk.index}`,
@@ -1882,20 +1914,20 @@ export class RAGService {
 						sourceType: 'markdown' as const
 					}
 				};
-				
+
 				chunkDocuments.push(chunkDocument);
 			}
-			
+
 			// Store in unified vector database
 			await this.vectorDB.upsertFileDocuments(file.path, chunkDocuments);
-			
+
 			// Report final progress
 			if (progressCallback) {
 				progressCallback(chunks.length, chunks.length);
 			}
-			
+
 			LoggingUtility.log(`Updated ${chunkDocuments.length} chunk embeddings for file: ${file.path}`);
-			
+
 		} catch (error) {
 			LoggingUtility.error(`Error updating embeddings for ${file.path}:`, error);
 		}
@@ -1907,13 +1939,13 @@ export class RAGService {
 	async search(query: string, limit: number = 5, threshold: number = 0.3): Promise<RAGSearchResult[]> {
 		// Generate query embedding
 		const queryEmbedding = await this.generateEmbedding(query);
-		
+
 		// Search in unified vector database
 		const allResults = this.vectorDB.search(queryEmbedding, limit, threshold);
-		
+
 		// Convert to RAGSearchResult format
 		const ragResults: RAGSearchResult[] = [];
-		
+
 		for (const result of allResults) {
 			const file = this.app.vault.getAbstractFileByPath(result.document.metadata.filePath);
 			if (file instanceof TFile) {
@@ -1928,7 +1960,7 @@ export class RAGService {
 				});
 			}
 		}
-		
+
 		return ragResults;
 	}
 
@@ -1938,13 +1970,13 @@ export class RAGService {
 	async searchGroupedByFile(query: string, maxFiles: number = 3, maxParagraphsPerFile: number = 3, threshold: number = 0.3): Promise<Map<string, RAGSearchResult[]>> {
 		// Generate query embedding
 		const queryEmbedding = await this.generateEmbedding(query);
-		
+
 		// Search in unified vector database grouped by file
 		const resultsMap = this.vectorDB.searchGroupedByFile(queryEmbedding, maxFiles, maxParagraphsPerFile, threshold);
-		
+
 		// Convert to RAGSearchResult format
 		const ragResultsMap = new Map<string, RAGSearchResult[]>();
-		
+
 		for (const [filePath, paragraphResults] of resultsMap) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile) {
@@ -1957,11 +1989,11 @@ export class RAGService {
 					paragraphIndex: result.document.metadata.paragraphIndex,
 					matchedParagraph: result.document.metadata.paragraphText
 				}));
-				
+
 				ragResultsMap.set(filePath, ragResults);
 			}
 		}
-		
+
 		return ragResultsMap;
 	}
 
@@ -1987,7 +2019,7 @@ export class RAGService {
 		}
 
 		let context = '\n\n--- RELEVANT NOTES (RAG) ---\n\n';
-		
+
 		for (const result of results) {
 			context += `**${result.title}** (${result.path}`;
 			if (result.paragraphIndex !== undefined) {
@@ -2011,19 +2043,19 @@ export class RAGService {
 		}
 
 		let context = '\n\n--- RELEVANT NOTES (RAG) ---\n\n';
-		
+
 		for (const [filePath, results] of resultsMap) {
 			if (results.length > 0) {
 				context += `**${results[0].title}** (${filePath})\n\n`;
-				
+
 				// Sort by paragraph index for logical reading order
 				const sortedResults = results.sort((a, b) => (a.paragraphIndex || 0) - (b.paragraphIndex || 0));
-				
+
 				for (const result of sortedResults) {
 					context += `[Paragraph ${result.paragraphIndex! + 1}, Similarity: ${(result.similarity * 100).toFixed(1)}%]\n`;
 					context += result.content + '\n\n';
 				}
-				
+
 				context += '---\n\n';
 			}
 		}
@@ -2034,10 +2066,10 @@ export class RAGService {
 	/**
 	 * Get index statistics
 	 */
-	getStats(): { 
-		documentCount: number; 
-		fileCount: number; 
-		lastUpdated: Date; 
+	getStats(): {
+		documentCount: number;
+		fileCount: number;
+		lastUpdated: Date;
 		sizeInBytes: number;
 		markdownDocuments: number;
 		imageDocuments: number;
@@ -2045,7 +2077,7 @@ export class RAGService {
 		imageFiles: number;
 	} {
 		const stats = this.vectorDB.getStats();
-		
+
 		// Get breakdown by source type
 		if (!this.vectorDB) {
 			return {
@@ -2079,7 +2111,7 @@ export class RAGService {
 		const imageCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
 		const markdownFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
 		const imageFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
-		
+
 		return {
 			documentCount: stats.documentCount,
 			fileCount: stats.fileCount,
@@ -2124,6 +2156,11 @@ export class RAGService {
 	}
 
 	/**
+	 * Close database connection and cleanup resources
+	 */
+
+
+	/**
 	 * Get detailed status information about the RAG database
 	 */
 	getDetailedStatus(): {
@@ -2137,25 +2174,25 @@ export class RAGService {
 		totalFiles: number;
 	} {
 		const stats = this.getStats();
-		
+
 		// Get breakdown by source type
 		const db = (this.vectorDB as any).db;
 		let textStats = { documentCount: 0, fileCount: 0, lastUpdated: stats.lastUpdated, sizeInBytes: 0 };
 		let imageStats = { documentCount: 0, fileCount: 0, lastUpdated: stats.lastUpdated, sizeInBytes: 0 };
-		
+
 		if (db) {
 			const markdownCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
 			const imageCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
 			const markdownFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
 			const imageFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
-			
+
 			textStats = {
 				documentCount: markdownCount.count,
 				fileCount: markdownFileCount.count,
 				lastUpdated: stats.lastUpdated,
 				sizeInBytes: 0 // Size breakdown not easily available
 			};
-			
+
 			imageStats = {
 				documentCount: imageCount.count,
 				fileCount: imageFileCount.count,
@@ -2163,7 +2200,7 @@ export class RAGService {
 				sizeInBytes: 0 // Size breakdown not easily available
 			};
 		}
-		
+
 		return {
 			isInitialized: true,
 			isIndexing: this.isIndexing,

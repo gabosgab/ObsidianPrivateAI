@@ -1,6 +1,6 @@
 import { LoggingUtility } from './LoggingUtility';
 import { App } from 'obsidian';
-import Database from 'better-sqlite3';
+import initSqlJs from '@webreflection/sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -27,7 +27,7 @@ export interface VectorSearchResult {
 }
 
 export class UnifiedVectorDatabase {
-	private db: Database.Database | null = null;
+	private db: any | null = null;
 	private dbPath: string;
 	private app: App;
 	private dimension: number = 0;
@@ -50,13 +50,31 @@ export class UnifiedVectorDatabase {
 			}
 
 			// Open database connection
-			this.db = new Database(this.dbPath);
-			
-			// Enable WAL mode for better concurrency
-			this.db.pragma('journal_mode = WAL');
-			
+			// Load WASM file from plugin directory (two levels up from db file: vector-index/embeddings.db -> plugin/sql-wasm.wasm)
+			const wasmPath = path.join(path.dirname(path.dirname(this.dbPath)), 'sql-wasm.wasm');
+			const wasmBinary = fs.readFileSync(wasmPath);
+			const SQL = await initSqlJs({
+				wasmBinary
+			});
+
+			// Load database if it exists, otherwise create new
+			let dbFile;
+			if (fs.existsSync(this.dbPath)) {
+				dbFile = fs.readFileSync(this.dbPath);
+			}
+			this.db = new SQL.Database(dbFile);
+
+			// Enable WAL mode for better concurrency - sql.js might not support this as it's in-memory/file-backed, but we can try
+			// Note: sql.js is usually synchronous and in-memory, requiring explicit save.
+			// The original code assumed standard SQLite. usage of WAL with sql.js (file-backed emulation) might be no-op.
+			try {
+				this.db.run("PRAGMA journal_mode = WAL");
+			} catch (e) {
+				LoggingUtility.warn("Could not set WAL mode (might be unsupported in this WASM build):", e);
+			}
+
 			// Create the documents table if it doesn't exist
-			this.db.exec(`
+			this.db.run(`
 				CREATE TABLE IF NOT EXISTS documents (
 					id TEXT PRIMARY KEY,
 					file_path TEXT NOT NULL,
@@ -74,21 +92,29 @@ export class UnifiedVectorDatabase {
 					created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 					updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 				);
-				
-				CREATE INDEX IF NOT EXISTS idx_file_path ON documents(file_path);
-				CREATE INDEX IF NOT EXISTS idx_source_type ON documents(source_type);
-				CREATE INDEX IF NOT EXISTS idx_file_checksum ON documents(file_checksum);
 			`);
 
+			this.db.run(`CREATE INDEX IF NOT EXISTS idx_file_path ON documents(file_path);`);
+			this.db.run(`CREATE INDEX IF NOT EXISTS idx_source_type ON documents(source_type);`);
+			this.db.run(`CREATE INDEX IF NOT EXISTS idx_file_checksum ON documents(file_checksum);`);
+
 			// Get dimension from first document if exists
-			const dimensionRow = this.db.prepare('SELECT dimension FROM documents LIMIT 1').get() as { dimension?: number } | undefined;
-			if (dimensionRow && dimensionRow.dimension) {
-				this.dimension = dimensionRow.dimension;
-				LoggingUtility.log(`Loaded vector dimension: ${this.dimension} from database`);
+			const dimStmt = this.db.prepare('SELECT dimension FROM documents LIMIT 1');
+			if (dimStmt.step()) {
+				const row = dimStmt.getAsObject();
+				if (row.dimension) {
+					this.dimension = row.dimension;
+					LoggingUtility.log(`Loaded vector dimension: ${this.dimension} from database`);
+				}
 			}
+			dimStmt.free();
 
 			// Get document count
-			const countResult = this.db.prepare('SELECT COUNT(*) as count FROM documents').get() as { count: number };
+			const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM documents');
+			countStmt.step();
+			const countResult = countStmt.getAsObject();
+			countStmt.free();
+
 			LoggingUtility.log(`Loaded unified vector database with ${countResult.count} documents`);
 		} catch (error) {
 			LoggingUtility.error('Failed to load unified vector database:', error);
@@ -133,12 +159,13 @@ export class UnifiedVectorDatabase {
 		}
 
 		// Start transaction
-		const transaction = this.db.transaction(() => {
+		this.db.run("BEGIN TRANSACTION");
+		try {
 			// Remove existing documents for this file
-			this.db!.prepare('DELETE FROM documents WHERE file_path = ?').run(filePath);
+			this.db.run('DELETE FROM documents WHERE file_path = ?', [filePath]);
 
 			// Insert new documents
-			const insertStmt = this.db!.prepare(`
+			const insertStmt = this.db.prepare(`
 				INSERT INTO documents (
 					id, file_path, file_name, title, paragraph_index, paragraph_text,
 					file_checksum, last_modified, file_size, source_type, extracted_text,
@@ -147,7 +174,7 @@ export class UnifiedVectorDatabase {
 			`);
 
 			for (const doc of documents) {
-				insertStmt.run(
+				insertStmt.run([
 					doc.id,
 					doc.metadata.filePath,
 					doc.metadata.fileName || null,
@@ -161,12 +188,19 @@ export class UnifiedVectorDatabase {
 					doc.metadata.extractedText ? 1 : 0,
 					JSON.stringify(doc.vector),
 					this.dimension
-				);
+				]);
 			}
-		});
+			insertStmt.free();
 
-		transaction();
-		LoggingUtility.log(`Updated ${documents.length} documents for file: ${filePath}`);
+			this.db.run("COMMIT");
+			LoggingUtility.log(`Updated ${documents.length} documents for file: ${filePath}`);
+
+			// Persist to disk immediately since sql.js is in-memory
+			await this.save();
+		} catch (error) {
+			this.db.run("ROLLBACK");
+			throw error;
+		}
 	}
 
 	/**
@@ -177,9 +211,14 @@ export class UnifiedVectorDatabase {
 			throw new Error('Database not initialized. Call load() first.');
 		}
 
-		const result = this.db.prepare('DELETE FROM documents WHERE file_path = ?').run(filePath);
-		if (result.changes > 0) {
-			LoggingUtility.log(`Removed ${result.changes} documents for file: ${filePath}`);
+		this.db.run('DELETE FROM documents WHERE file_path = ?', [filePath]);
+		const changes = this.db.getRowsModified();
+
+		// Persist to disk
+		await this.save();
+
+		if (changes > 0) {
+			LoggingUtility.log(`Removed ${changes} documents for file: ${filePath}`);
 		}
 	}
 
@@ -199,20 +238,12 @@ export class UnifiedVectorDatabase {
 		}
 
 		// Get all documents
-		const rows = this.db.prepare('SELECT * FROM documents').all() as Array<{
-			id: string;
-			file_path: string;
-			file_name: string | null;
-			title: string;
-			paragraph_index: number;
-			paragraph_text: string;
-			file_checksum: string;
-			last_modified: number | null;
-			file_size: number | null;
-			source_type: 'markdown' | 'image';
-			extracted_text: number;
-			vector_json: string;
-		}>;
+		const stmt = this.db.prepare('SELECT * FROM documents');
+		const rows: any[] = [];
+		while (stmt.step()) {
+			rows.push(stmt.getAsObject());
+		}
+		stmt.free();
 
 		if (rows.length === 0) {
 			return [];
@@ -326,7 +357,10 @@ export class UnifiedVectorDatabase {
 			throw new Error('Database not initialized. Call load() first.');
 		}
 
-		this.db.prepare('DELETE FROM documents').run();
+		this.db.run('DELETE FROM documents');
+		// Persist changes
+		await this.save();
+
 		this.dimension = 0;
 		LoggingUtility.log('Cleared unified vector database');
 	}
@@ -339,22 +373,35 @@ export class UnifiedVectorDatabase {
 			throw new Error('Database not initialized. Call load() first.');
 		}
 
-		const countResult = this.db.prepare('SELECT COUNT(*) as count FROM documents').get() as { count: number };
-		const fileCountResult = this.db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents').get() as { count: number };
-		const lastUpdatedResult = this.db.prepare('SELECT MAX(updated_at) as last_updated FROM documents').get() as { last_updated: number | null };
+		const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM documents');
+		countStmt.step();
+		const countResult = countStmt.getAsObject();
+		countStmt.free();
+
+		const fileCountStmt = this.db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents');
+		fileCountStmt.step();
+		const fileCountResult = fileCountStmt.getAsObject();
+		fileCountStmt.free();
+
+		const lastUpdatedStmt = this.db.prepare('SELECT MAX(updated_at) as last_updated FROM documents');
+		lastUpdatedStmt.step();
+		const lastUpdatedResult = lastUpdatedStmt.getAsObject();
+		lastUpdatedStmt.free();
 
 		// Get database file size
 		let sizeInBytes = 0;
 		try {
-			const stats = fs.statSync(this.dbPath);
-			sizeInBytes = stats.size;
+			if (fs.existsSync(this.dbPath)) {
+				const stats = fs.statSync(this.dbPath);
+				sizeInBytes = stats.size;
+			}
 		} catch (error) {
 			LoggingUtility.warn('Could not get database file size:', error);
 		}
 
 		return {
-			documentCount: countResult.count,
-			fileCount: fileCountResult.count,
+			documentCount: Number(countResult.count),
+			fileCount: Number(fileCountResult.count),
 			lastUpdated: lastUpdatedResult.last_updated ? new Date(lastUpdatedResult.last_updated * 1000) : new Date(),
 			sizeInBytes
 		};
@@ -368,7 +415,12 @@ export class UnifiedVectorDatabase {
 			throw new Error('Database not initialized. Call load() first.');
 		}
 
-		const result = this.db.prepare('SELECT COUNT(*) as count FROM documents WHERE file_path = ?').get(filePath) as { count: number };
+		const stmt = this.db.prepare('SELECT COUNT(*) as count FROM documents WHERE file_path = ?');
+		stmt.bind([filePath]);
+		stmt.step();
+		const result = stmt.getAsObject();
+		stmt.free();
+
 		return result.count > 0;
 	}
 
@@ -380,22 +432,15 @@ export class UnifiedVectorDatabase {
 			throw new Error('Database not initialized. Call load() first.');
 		}
 
-		const rows = this.db.prepare('SELECT * FROM documents WHERE file_path = ? ORDER BY paragraph_index').all(filePath) as Array<{
-			id: string;
-			file_path: string;
-			file_name: string | null;
-			title: string;
-			paragraph_index: number;
-			paragraph_text: string;
-			file_checksum: string;
-			last_modified: number | null;
-			file_size: number | null;
-			source_type: 'markdown' | 'image';
-			extracted_text: number;
-			vector_json: string;
-		}>;
+		const stmt = this.db.prepare('SELECT * FROM documents WHERE file_path = ? ORDER BY paragraph_index');
+		stmt.bind([filePath]);
+		const rows: any[] = [];
+		while (stmt.step()) {
+			rows.push(stmt.getAsObject());
+		}
+		stmt.free();
 
-		return rows.map(row => ({
+		return rows.map((row: any) => ({
 			id: row.id,
 			vector: JSON.parse(row.vector_json) as number[],
 			metadata: {
@@ -421,22 +466,14 @@ export class UnifiedVectorDatabase {
 			throw new Error('Database not initialized. Call load() first.');
 		}
 
-		const rows = this.db.prepare('SELECT * FROM documents').all() as Array<{
-			id: string;
-			file_path: string;
-			file_name: string | null;
-			title: string;
-			paragraph_index: number;
-			paragraph_text: string;
-			file_checksum: string;
-			last_modified: number | null;
-			file_size: number | null;
-			source_type: 'markdown' | 'image';
-			extracted_text: number;
-			vector_json: string;
-		}>;
+		const stmt = this.db.prepare('SELECT * FROM documents');
+		const rows: any[] = [];
+		while (stmt.step()) {
+			rows.push(stmt.getAsObject());
+		}
+		stmt.free();
 
-		return rows.map(row => ({
+		return rows.map((row: any) => ({
 			id: row.id,
 			vector: JSON.parse(row.vector_json) as number[],
 			metadata: {
@@ -493,37 +530,53 @@ export class UnifiedVectorDatabase {
 		}
 
 		// Get all file paths from database
-		const rows = this.db.prepare('SELECT DISTINCT file_path FROM documents').all() as Array<{ file_path: string }>;
-		const dbFilePaths = new Set(rows.map(row => row.file_path));
+		const stmt = this.db.prepare('SELECT DISTINCT file_path FROM documents');
+		const rows: any[] = [];
+		while (stmt.step()) {
+			rows.push(stmt.getAsObject());
+		}
+		stmt.free();
+
+		const dbFilePaths = new Set(rows.map((row: any) => row.file_path));
 
 		// Find files that exist in database but not in file system
 		const filesToRemove: string[] = [];
 		for (const dbFilePath of dbFilePaths) {
-			if (!existingFiles.has(dbFilePath)) {
-				filesToRemove.push(dbFilePath);
+			if (!existingFiles.has(dbFilePath as string)) {
+				filesToRemove.push(dbFilePath as string);
 			}
 		}
 
 		// Remove documents for obsolete files
 		if (filesToRemove.length > 0) {
-			const deleteStmt = this.db.prepare('DELETE FROM documents WHERE file_path = ?');
-			const deleteMany = this.db.transaction((files: string[]) => {
-				for (const filePath of files) {
-					deleteStmt.run(filePath);
+			this.db.run("BEGIN TRANSACTION");
+			try {
+				const deleteStmt = this.db.prepare('DELETE FROM documents WHERE file_path = ?');
+				for (const filePath of filesToRemove) {
+					deleteStmt.run([filePath]);
 				}
-			});
+				deleteStmt.free();
+				this.db.run("COMMIT");
 
-			deleteMany(filesToRemove);
-			LoggingUtility.log(`Removed ${filesToRemove.length} obsolete file entries from database`);
+				LoggingUtility.log(`Removed ${filesToRemove.length} obsolete file entries from database`);
+
+				// Persist changes
+				await this.save();
+			} catch (error) {
+				this.db.run("ROLLBACK");
+				LoggingUtility.error('Failed to remove obsolete documents:', error);
+			}
 		}
 	}
 
 	/**
-	 * Save is a no-op for SQLite (data is persisted immediately)
+	 * Save the database to disk
 	 */
 	async save(): Promise<void> {
-		// SQLite persists data immediately, so this is a no-op
-		// Kept for API compatibility
+		if (this.db) {
+			const data = this.db.export();
+			const buffer = Buffer.from(data);
+			fs.writeFileSync(this.dbPath, buffer);
+		}
 	}
 }
-
