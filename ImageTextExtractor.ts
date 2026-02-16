@@ -100,18 +100,6 @@ export class ImageTextExtractor {
 	 */
 	async extractTextFromImage(imageFile: TFile): Promise<ImageTextExtractionResult> {
 		try {
-			// Check vision capabilities first
-			const capabilities = await this.checkVisionCapabilities();
-
-			if (!capabilities.supportsVision) {
-				return {
-					success: false,
-					extractedText: '',
-					error: 'LLM model does not support vision capabilities',
-					modelCapabilities: capabilities
-				};
-			}
-
 			// Read the image file as base64
 			const imageData = await this.readImageAsBase64(imageFile);
 
@@ -126,15 +114,13 @@ export class ImageTextExtractor {
 				return {
 					success: false,
 					extractedText: '',
-					error: 'No text could be extracted from the image',
-					modelCapabilities: capabilities
+					error: 'No text could be extracted from the image'
 				};
 			}
 
 			return {
 				success: true,
-				extractedText: response.trim(),
-				modelCapabilities: capabilities
+				extractedText: response.trim()
 			};
 
 		} catch (error) {

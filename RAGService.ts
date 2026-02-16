@@ -159,14 +159,7 @@ export class RAGService {
 
 			LoggingUtility.log(`Starting manual image processing for ${imageFiles.length} images`);
 
-			// Check vision capabilities first
-			LoggingUtility.log('Checking vision capabilities...');
-			const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-			LoggingUtility.log('Vision capabilities result:', capabilities);
 
-			if (!capabilities.supportsVision) {
-				throw new Error(`Your current LLM model does not support vision capabilities. To process images in your Obsidian vault, you need to use a vision model like Gemma 3. Please switch to a vision-capable model in LM Studio and try again.`);
-			}
 
 			// Process each image with progress reporting
 			for (let i = 0; i < imageFiles.length; i++) {
@@ -626,12 +619,7 @@ export class RAGService {
 
 			LoggingUtility.log(`Found ${imageFiles.length} image files to process`);
 
-			// Check vision capabilities first
-			const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-			if (!capabilities.supportsVision) {
-				LoggingUtility.log('LLM model does not support vision, skipping image processing');
-				return;
-			}
+			// Process each image
 
 			// Process each image
 			for (let i = 0; i < imageFiles.length; i++) {
@@ -1170,7 +1158,7 @@ export class RAGService {
 							return;
 						}
 
-						await this.updateFileEmbeddingsWithProgress(file, (chunkIndex, totalFileChunks) => {
+						await this.updateFileEmbeddingsWithProgress(file, (chunkIndex: number, totalFileChunks: number) => {
 							if (this.progressCallback) {
 								const currentChunk = processedChunks + chunkIndex + 1;
 								this.progressCallback(currentChunk, totalChunks, `Processing chunk ${chunkIndex + 1} of ${totalFileChunks} chunks in ${file.basename}`);
@@ -1233,120 +1221,111 @@ export class RAGService {
 						this.progressCallback(0, imageFiles.length, 'Finding unindexed image text');
 					}
 
-					// Check vision capabilities first
-					LoggingUtility.log('Checking LLM vision capabilities...');
-					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
+					// Process each image
+					for (let i = 0; i < imageFiles.length; i++) {
+						if (this.indexingAbortController?.signal.aborted) {
+							LoggingUtility.log('Image processing aborted by user');
+							break;
+						}
 
-					if (!capabilities.supportsVision) {
-						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
-					} else {
-						// Process each image
-						for (let i = 0; i < imageFiles.length; i++) {
-							if (this.indexingAbortController?.signal.aborted) {
-								LoggingUtility.log('Image processing aborted by user');
-								break;
-							}
+						const imageFile = imageFiles[i];
 
-							const imageFile = imageFiles[i];
+						if (this.progressCallback) {
+							this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
+						}
 
-							if (this.progressCallback) {
-								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
-							}
+						try {
+							LoggingUtility.log(`Checking image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 
-							try {
-								LoggingUtility.log(`Checking image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+							// Check if image has changed since last extraction by comparing checksum
+							const newImageChecksum = await this.calculateCRC32(imageFile);
 
-								// Check if image has changed since last extraction by comparing checksum
-								const newImageChecksum = await this.calculateCRC32(imageFile);
+							// Check abort after async operation
+							if (this.indexingAbortController?.signal.aborted) break;
 
-								// Check abort after async operation
-								if (this.indexingAbortController?.signal.aborted) break;
+							const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
 
-								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
-
-								if (existingImageDocs.length > 0) {
-									const existingChecksum = existingImageDocs[0].metadata.fileChecksum;
-									if (existingChecksum === newImageChecksum) {
-										// Image content hasn't changed, skip extraction
-										LoggingUtility.log(`Image unchanged since last extraction, skipping: ${imageFile.path}`);
-										continue;
-									} else {
-										LoggingUtility.log(`Image content changed: ${imageFile.path} (new checksum: ${newImageChecksum}, old: ${existingChecksum})`);
-									}
+							if (existingImageDocs.length > 0) {
+								const existingChecksum = existingImageDocs[0].metadata.fileChecksum;
+								if (existingChecksum === newImageChecksum) {
+									// Image content hasn't changed, skip extraction
+									LoggingUtility.log(`Image unchanged since last extraction, skipping: ${imageFile.path}`);
+									continue;
 								} else {
-									LoggingUtility.log(`New image detected: ${imageFile.path} (checksum: ${newImageChecksum})`);
+									LoggingUtility.log(`Image content changed: ${imageFile.path} (new checksum: ${newImageChecksum}, old: ${existingChecksum})`);
 								}
+							} else {
+								LoggingUtility.log(`New image detected: ${imageFile.path} (checksum: ${newImageChecksum})`);
+							}
 
-								// Extract text from image
-								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+							// Extract text from image
+							const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
 
-								// Check abort after async operation
-								if (this.indexingAbortController?.signal.aborted) break;
+							// Check abort after async operation
+							if (this.indexingAbortController?.signal.aborted) break;
 
-								if (result.success && result.extractedText.trim()) {
-									// Create a virtual document for the extracted text
-									const extractedText = result.extractedText;
+							if (result.success && result.extractedText.trim()) {
+								// Create a virtual document for the extracted text
+								const extractedText = result.extractedText;
 
-									// Split extracted text into chunks
-									const chunks = this.splitIntoParagraphs(extractedText);
+								// Split extracted text into chunks
+								const chunks = this.splitIntoParagraphs(extractedText);
 
-									if (chunks.length > 0) {
-										// Generate embeddings for chunks
-										const texts = chunks.map(c => c.text);
-										const embeddings = await this.embeddingService.generateEmbeddings(texts);
+								if (chunks.length > 0) {
+									// Generate embeddings for chunks
+									const texts = chunks.map(c => c.text);
+									const embeddings = await this.embeddingService.generateEmbeddings(texts);
 
-										// Check abort after async operation
-										if (this.indexingAbortController?.signal.aborted) break;
+									// Check abort after async operation
+									if (this.indexingAbortController?.signal.aborted) break;
 
-										const fileChecksum = await this.calculateCRC32(imageFile);
+									const fileChecksum = await this.calculateCRC32(imageFile);
 
-										// Create chunk documents for the image
-										const chunkDocuments = chunks.map((chunk, index) => ({
-											id: `${imageFile.path}#c${chunk.index}`,
-											vector: embeddings[index],
-											metadata: {
-												filePath: imageFile.path,
-												fileName: imageFile.basename,
-												title: `Image: ${imageFile.basename}`,
-												paragraphIndex: chunk.index,
-												paragraphText: chunk.text,
-												fileChecksum: fileChecksum,
-												lastModified: imageFile.stat.mtime,
-												fileSize: imageFile.stat.size,
-												sourceType: 'image' as const,
-												extractedText: true
-											}
-										}));
-
-										// Store in unified vector database
-										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-										// Save periodically to avoid losing progress
-										if ((i + 1) % 2 === 0) {
-											await this.vectorDB.save();
+									// Create chunk documents for the image
+									const chunkDocuments = chunks.map((chunk, index) => ({
+										id: `${imageFile.path}#c${chunk.index}`,
+										vector: embeddings[index],
+										metadata: {
+											filePath: imageFile.path,
+											fileName: imageFile.basename,
+											title: `Image: ${imageFile.basename}`,
+											paragraphIndex: chunk.index,
+											paragraphText: chunk.text,
+											fileChecksum: fileChecksum,
+											lastModified: imageFile.stat.mtime,
+											fileSize: imageFile.stat.size,
+											sourceType: 'image' as const,
+											extractedText: true
 										}
+									}));
 
-										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
+									// Store in unified vector database
+									await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+									// Save periodically to avoid losing progress
+									if ((i + 1) % 2 === 0) {
+										await this.vectorDB.save();
 									}
-								} else {
-									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
-								}
 
-								// Yield control periodically
-								if (i % 3 === 0) {
-									await new Promise(resolve => setTimeout(resolve, 0));
+									LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 								}
-
-							} catch (error) {
-								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+							} else {
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
 							}
-						}
 
-						// Save the updated database after image processing
-						if (!this.indexingAbortController?.signal.aborted) {
-							await this.vectorDB.save();
-							LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+							// Yield control periodically
+							if (i % 3 === 0) {
+								await new Promise(resolve => setTimeout(resolve, 0));
+							}
+
+						} catch (error) {
+							LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
 						}
+					}
+
+					// Save the updated database after image processing
+					if (!this.indexingAbortController?.signal.aborted) {
+						await this.vectorDB.save();
+						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
 					}
 				} else {
 					LoggingUtility.log('No image files found in vault');
@@ -1549,98 +1528,85 @@ export class RAGService {
 						this.progressCallback(0, imageFiles.length, 'Finding unindexed image text');
 					}
 
-					// Check vision capabilities first
-					LoggingUtility.log('Checking LLM vision capabilities...');
-					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
-
-					if (!capabilities.supportsVision) {
-						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
-					} else {
-						// Process each image (no checksum check since we cleared the database)
-						// Process each image (no checksum check since we cleared the database)
-						for (let i = 0; i < imageFiles.length; i++) {
-							if (this.indexingAbortController?.signal.aborted) {
-								LoggingUtility.log('Image processing aborted by user');
-								break;
-							}
-
-							const imageFile = imageFiles[i];
-
-							if (this.progressCallback) {
-								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
-							}
-
-							try {
-								LoggingUtility.log(`Checking image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-
-								// Extract text from image
-								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-
-								// Check abort after async
-								if (this.indexingAbortController?.signal.aborted) break;
-
-
-
-								if (result.success && result.extractedText.trim()) {
-									// Create a virtual document for the extracted text
-									const extractedText = result.extractedText;
-
-									// Split extracted text into chunks
-									const chunks = this.splitIntoParagraphs(extractedText);
-
-									if (chunks.length > 0) {
-										// Generate embeddings for chunks
-										const texts = chunks.map(c => c.text);
-										const embeddings = await this.embeddingService.generateEmbeddings(texts);
-
-										if (this.indexingAbortController?.signal.aborted) break;
-
-										const checksum = await this.calculateCRC32(imageFile);
-
-										// Create chunk documents for the image
-										const chunkDocuments = chunks.map((chunk, index) => ({
-											id: `${imageFile.path}#c${chunk.index}`,
-											vector: embeddings[index],
-											metadata: {
-												filePath: imageFile.path,
-												fileName: imageFile.basename,
-												title: `Image: ${imageFile.basename}`,
-												paragraphIndex: chunk.index,
-												paragraphText: chunk.text,
-												fileChecksum: checksum,
-												lastModified: imageFile.stat.mtime,
-												fileSize: imageFile.stat.size,
-												sourceType: 'image' as const,
-												extractedText: true
-											}
-										}));
-
-										// Store in unified vector database
-										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-										await this.vectorDB.save();
-
-										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
-									}
-								} else {
-									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
-								}
-
-								// Yield control periodically
-								if (i % 3 === 0) {
-									await new Promise(resolve => setTimeout(resolve, 0));
-								}
-
-							} catch (error) {
-								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
-							}
+					// Process each image (no checksum check since we cleared the database)
+					for (let i = 0; i < imageFiles.length; i++) {
+						if (this.indexingAbortController?.signal.aborted) {
+							LoggingUtility.log('Image processing aborted by user');
+							break;
 						}
 
-						// Save the updated database after image processing
-						if (!this.indexingAbortController.signal.aborted) {
-							await this.vectorDB.save();
+						const imageFile = imageFiles[i];
+
+						if (this.progressCallback) {
+							this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
 						}
-						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+
+						try {
+							LoggingUtility.log(`Checking image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+
+							// Extract text from image
+							const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+
+							// Check abort after async
+							if (this.indexingAbortController?.signal.aborted) break;
+
+							if (result.success && result.extractedText.trim()) {
+								// Create a virtual document for the extracted text
+								const extractedText = result.extractedText;
+
+								// Split extracted text into chunks
+								const chunks = this.splitIntoParagraphs(extractedText);
+
+								if (chunks.length > 0) {
+									// Generate embeddings for chunks
+									const texts = chunks.map(c => c.text);
+									const embeddings = await this.embeddingService.generateEmbeddings(texts);
+
+									if (this.indexingAbortController?.signal.aborted) break;
+
+									const checksum = await this.calculateCRC32(imageFile);
+
+									// Create chunk documents for the image
+									const chunkDocuments = chunks.map((chunk, index) => ({
+										id: `${imageFile.path}#c${chunk.index}`,
+										vector: embeddings[index],
+										metadata: {
+											filePath: imageFile.path,
+											fileName: imageFile.basename,
+											title: `Image: ${imageFile.basename}`,
+											paragraphIndex: chunk.index,
+											paragraphText: chunk.text,
+											fileChecksum: checksum,
+											lastModified: imageFile.stat.mtime,
+											fileSize: imageFile.stat.size,
+											sourceType: 'image' as const,
+											extractedText: true
+										}
+									}));
+
+									// Store in unified vector database
+									await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+									await this.vectorDB.save();
+
+									LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
+								}
+							} else {
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+							}
+
+							// Yield control periodically
+							if (i % 3 === 0) {
+								await new Promise(resolve => setTimeout(resolve, 0));
+							}
+
+						} catch (error) {
+							LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+						}
+					}
+
+					// Save the updated database after image processing
+					if (!this.indexingAbortController?.signal.aborted) {
+						await this.vectorDB.save();
 					}
 				} else {
 					LoggingUtility.log('No image files found in vault');
@@ -1786,100 +1752,93 @@ export class RAGService {
 						this.progressCallback(0, imageFiles.length, 'Finding unindexed image text');
 					}
 
-					// Check vision capabilities first
-					LoggingUtility.log('Checking LLM vision capabilities...');
-					const capabilities = await this.imageTextExtractor.checkVisionCapabilities();
-					LoggingUtility.log(`Vision capabilities: supportsVision=${capabilities.supportsVision}, model=${capabilities.modelName || 'unknown'}, description=${capabilities.description}`);
 
-					if (!capabilities.supportsVision) {
-						LoggingUtility.log(`LLM model does not support vision, skipping image processing. Reason: ${capabilities.description}`);
-					} else {
-						// Process each image
-						for (let i = 0; i < imageFiles.length; i++) {
-							if (this.indexingAbortController.signal.aborted) {
-								LoggingUtility.log('Image processing aborted by user');
-								break;
-							}
-
-							const imageFile = imageFiles[i];
-
-							if (this.progressCallback) {
-								this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
-							}
-
-							try {
-								LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
-
-								// Check if image has changed since last extraction by comparing checksum
-								const newImageChecksum = await this.calculateCRC32(imageFile);
-
-								const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
-								if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
-									// Image content hasn't changed, skip extraction
-									LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
-									continue;
-								}
-
-								LoggingUtility.log(`Image content changed, extracting text: ${imageFile.path} (checksum: ${newImageChecksum})`);
-
-								// Extract text from image
-								const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
-
-								if (result.success && result.extractedText.trim()) {
-									// Create a virtual document for the extracted text
-									const extractedText = result.extractedText;
-
-									// Split extracted text into chunks
-									const chunks = this.splitIntoParagraphs(extractedText);
-
-									if (chunks.length > 0) {
-										// Generate embeddings for chunks
-										const texts = chunks.map(c => c.text);
-										const embeddings = await this.embeddingService.generateEmbeddings(texts);
-										const checksum = await this.calculateCRC32(imageFile);
-
-										// Create chunk documents for the image
-										const chunkDocuments = chunks.map((chunk, index) => ({
-											id: `${imageFile.path}#c${chunk.index}`,
-											vector: embeddings[index],
-											metadata: {
-												filePath: imageFile.path,
-												fileName: imageFile.basename,
-												title: `Image: ${imageFile.basename}`,
-												paragraphIndex: chunk.index,
-												paragraphText: chunk.text,
-												fileChecksum: checksum,
-												lastModified: imageFile.stat.mtime,
-												fileSize: imageFile.stat.size,
-												sourceType: 'image' as const,
-												extractedText: true
-											}
-										}));
-
-										// Store in unified vector database
-										await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
-										await this.vectorDB.save();
-
-										LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
-									}
-								} else {
-									LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
-								}
-
-								// Yield control periodically
-								if (i % 3 === 0) {
-									await new Promise(resolve => setTimeout(resolve, 0));
-								}
-
-							} catch (error) {
-								LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
-							}
+					// Process each image
+					for (let i = 0; i < imageFiles.length; i++) {
+						if (this.indexingAbortController.signal.aborted) {
+							LoggingUtility.log('Image processing aborted by user');
+							break;
 						}
 
-						// Save the updated database after image processing
-						await this.vectorDB.save();
-						LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+						const imageFile = imageFiles[i];
+
+						if (this.progressCallback) {
+							this.progressCallback(i + 1, imageFiles.length, `Processing image: ${imageFile.basename}`);
+						}
+
+						try {
+							LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
+
+							// Check if image has changed since last extraction by comparing checksum
+							const newImageChecksum = await this.calculateCRC32(imageFile);
+
+							const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
+							if (existingImageDocs.length > 0 && existingImageDocs[0].metadata.fileChecksum === newImageChecksum) {
+								// Image content hasn't changed, skip extraction
+								LoggingUtility.log(`Image unchanged since last extraction: ${imageFile.path} (checksum: ${newImageChecksum})`);
+								continue;
+							}
+
+							LoggingUtility.log(`Image content changed, extracting text: ${imageFile.path} (checksum: ${newImageChecksum})`);
+
+							// Extract text from image
+							const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
+
+							if (result.success && result.extractedText.trim()) {
+								// Create a virtual document for the extracted text
+								const extractedText = result.extractedText;
+
+								// Split extracted text into chunks
+								const chunks = this.splitIntoParagraphs(extractedText);
+
+								if (chunks.length > 0) {
+									// Generate embeddings for chunks
+									const texts = chunks.map(c => c.text);
+									const embeddings = await this.embeddingService.generateEmbeddings(texts);
+									const checksum = await this.calculateCRC32(imageFile);
+
+									// Create chunk documents for the image
+									const chunkDocuments = chunks.map((chunk, index) => ({
+										id: `${imageFile.path}#c${chunk.index}`,
+										vector: embeddings[index],
+										metadata: {
+											filePath: imageFile.path,
+											fileName: imageFile.basename,
+											title: `Image: ${imageFile.basename}`,
+											paragraphIndex: chunk.index,
+											paragraphText: chunk.text,
+											fileChecksum: checksum,
+											lastModified: imageFile.stat.mtime,
+											fileSize: imageFile.stat.size,
+											sourceType: 'image' as const,
+											extractedText: true
+										}
+									}));
+
+									// Store in unified vector database
+									await this.vectorDB.upsertFileDocuments(imageFile.path, chunkDocuments);
+									await this.vectorDB.save();
+
+									LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
+								}
+							} else {
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+							}
+
+							// Yield control periodically
+							if (i % 3 === 0) {
+								await new Promise(resolve => setTimeout(resolve, 0));
+							}
+
+						} catch (error) {
+							LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+						}
 					}
+
+					// Save the updated database after image processing
+					await this.vectorDB.save();
+					LoggingUtility.log(`Image processing complete. Processed ${imageFiles.length} images.`);
+
 				} else {
 					LoggingUtility.log('No image files found in vault');
 				}
