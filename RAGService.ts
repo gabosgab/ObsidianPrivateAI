@@ -275,6 +275,9 @@ export class RAGService {
 
 			// Automatic maintenance if enabled
 			if (this.initOptions.autoMaintenance) {
+				// Clean up missing files first
+				await this.cleanupMissingFiles();
+
 				const isFreshInstall = await this.detectFreshInstall();
 
 				if (isFreshInstall) {
@@ -687,6 +690,25 @@ export class RAGService {
 
 		} catch (error) {
 			LoggingUtility.error('Error processing images in vault:', error);
+		}
+	}
+
+	/**
+	 * Remove documents for files that no longer exist in the vault
+	 */
+	private async cleanupMissingFiles(): Promise<void> {
+		try {
+			LoggingUtility.log('Checking for missing files in database...');
+
+			// Get all current files in the vault
+			const allFiles = this.app.vault.getFiles();
+			const existingFilePaths = new Set(allFiles.map(f => f.path));
+
+			// Remove obsolete documents from database
+			await this.vectorDB.removeObsoleteDocuments(existingFilePaths);
+
+		} catch (error) {
+			LoggingUtility.error('Error cleaning up missing files:', error);
 		}
 	}
 
