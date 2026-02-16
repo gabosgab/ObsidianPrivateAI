@@ -1230,7 +1230,7 @@ export class RAGService {
 
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
-						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
+						this.progressCallback(0, imageFiles.length, 'Finding unindexed image text');
 					}
 
 					// Check vision capabilities first
@@ -1546,7 +1546,7 @@ export class RAGService {
 
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
-						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
+						this.progressCallback(0, imageFiles.length, 'Finding unindexed image text');
 					}
 
 					// Check vision capabilities first
@@ -1783,7 +1783,7 @@ export class RAGService {
 
 				if (imageFiles.length > 0) {
 					if (this.progressCallback) {
-						this.progressCallback(0, imageFiles.length, 'Processing images for text extraction...');
+						this.progressCallback(0, imageFiles.length, 'Finding unindexed image text');
 					}
 
 					// Check vision capabilities first
