@@ -110,10 +110,13 @@ export default class LocalLLMPlugin extends Plugin {
 		// Initialize image text extractor in RAG service
 		this.ragService.initializeImageTextExtractor(this.llmService);
 
-		await this.ragService.initialize(this.settings);
+		// Defer RAG initialization until layout is ready to ensure vault cache is populated
+		this.app.workspace.onLayoutReady(async () => {
+			await this.ragService.initialize(this.settings);
 
-		// Always start file watcher since RAG is always enabled
-		this.ragService.startFileWatcher();
+			// Always start file watcher since RAG is always enabled
+			this.ragService.startFileWatcher();
+		});
 
 		// Register the view
 		this.registerView(
