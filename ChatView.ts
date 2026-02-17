@@ -80,10 +80,10 @@ export class ChatView extends ItemView {
 		// Header with title and settings button
 		const header = container.createEl('div', { cls: 'local-llm-chat-header' });
 		header.createEl('h4', { text: 'Private AI chat' });
-		
+
 		// Create button container for header buttons
 		const headerButtons = header.createEl('div', { cls: 'local-llm-header-buttons' });
-		
+
 		// Create new chat button
 		const newChatButton = headerButtons.createEl('button', {
 			cls: 'local-llm-new-chat-button',
@@ -93,17 +93,17 @@ export class ChatView extends ItemView {
 		newChatButton.addEventListener('click', async () => {
 			await this.startNewChat();
 		});
-		
+
 		// Create context mode dropdown
 		const contextModeContainer = headerButtons.createEl('div', {
 			cls: 'local-llm-context-mode-container'
 		});
-		
+
 		contextModeContainer.createEl('label', {
 			cls: 'local-llm-context-mode-label',
 			text: 'Context:'
 		});
-		
+
 		const dropdown = new DropdownComponent(contextModeContainer)
 			.addOption(ContextMode.OPEN_NOTES, 'Open Tabs')
 			.addOption(ContextMode.SEARCH, 'All Notes')
@@ -116,10 +116,10 @@ export class ChatView extends ItemView {
 				// Update RAG status display
 				this.updateRAGStatus();
 			});
-		
+
 		// Set initial value based on plugin settings
 		dropdown.setValue(this.contextMode);
-		
+
 		// Create settings button
 		const settingsButton = headerButtons.createEl('button', {
 			cls: 'local-llm-settings-button',
@@ -287,7 +287,7 @@ export class ChatView extends ItemView {
 		// Get context based on dropdown selection
 		let searchContext = '';
 		let searchResults: SearchResult[] = [];
-		
+
 		let contextMode: ContextMode = this.contextMode;
 		this.showSearchIndicator(true);
 		try {
@@ -309,7 +309,7 @@ export class ChatView extends ItemView {
 					maxTokens: maxContextTokens,
 					threshold: this.plugin.settings.ragThreshold
 				});
-				
+
 				if (searchResults.length > 0) {
 					searchContext = this.searchService.formatSearchResults(searchResults);
 					LoggingUtility.log(`Found ${searchResults.length} relevant notes using enhanced search`);
@@ -346,13 +346,7 @@ export class ChatView extends ItemView {
 					content: m.content
 				}));
 
-			// Add system message if search context is available
-			if (searchContext) {
-				conversationHistory.unshift({
-					role: 'system',
-					content: 'You are a helpful assistant with access to the user\'s Obsidian vault. When provided with context from their notes, use that information to provide more accurate and relevant responses. Reference specific notes when appropriate, but focus on answering the user\'s question clearly and concisely.'
-				});
-			}
+
 
 			// Add search context to the user message if available
 			let enhancedContent = content;
@@ -377,7 +371,7 @@ export class ChatView extends ItemView {
 
 			// Call streaming LLM API with abort signal
 			await this.llmService.sendMessageStream(enhancedContent, conversationHistory, streamCallback, this.currentAbortController.signal);
-			
+
 		} catch (error) {
 			// Handle error
 			if (error.name === 'AbortError') {
@@ -386,7 +380,7 @@ export class ChatView extends ItemView {
 				this.setSendButtonEnabled(true);
 				this.showStopButton(false);
 				this.currentAbortController = null;
-				
+
 				// Finalize the current streaming message as-is
 				const streamingMessage = this.messages.find(m => m.isStreaming);
 				if (streamingMessage) {
@@ -407,7 +401,7 @@ export class ChatView extends ItemView {
 	private setInputEnabled(enabled: boolean) {
 		this.inputElement.disabled = !enabled;
 		this.sendButton.disabled = !enabled;
-		
+
 		if (enabled) {
 			this.inputElement.focus();
 		}
@@ -415,7 +409,7 @@ export class ChatView extends ItemView {
 
 	private setSendButtonEnabled(enabled: boolean) {
 		this.sendButton.disabled = !enabled;
-		
+
 		if (enabled) {
 			this.inputElement.focus();
 		}
@@ -474,7 +468,7 @@ export class ChatView extends ItemView {
 					cls: 'streaming-cursor',
 					text: '▋'
 				});
-				
+
 				// Ensure text is selectable
 				contentEl.addClass('local-llm-selectable-content');
 			}
@@ -553,27 +547,27 @@ export class ChatView extends ItemView {
 				'',
 				this
 			);
-			
+
 			// Add copy button for assistant messages
 			const copyButton = messageEl.createEl('button', {
 				cls: 'local-llm-copy-button',
 				attr: { 'aria-label': 'Copy message content', 'type': 'button' },
 				text: '🗐'
 			});
-			
+
 			copyButton.addEventListener('click', async () => {
 				await navigator.clipboard.writeText(message.content);
-				
+
 				// Show success feedback
 				copyButton.textContent = '✅';
 				copyButton.classList.add('copied');
-				
+
 				setTimeout(() => {
 					copyButton.textContent = '🗐';
 					copyButton.classList.remove('copied');
 				}, 1000);
 			});
-			
+
 			// Add refresh button for installation messages (welcome messages with installation instructions)
 			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI!')) {
 				const refreshButton = messageEl.createEl('button', {
@@ -581,19 +575,19 @@ export class ChatView extends ItemView {
 					text: '🔄 Test connection',
 					attr: { 'aria-label': 'Test connection to LLM server', 'type': 'button' }
 				});
-				
+
 				refreshButton.addEventListener('click', async () => {
 					// Show loading state
 					refreshButton.textContent = '🔄 Testing...';
 					refreshButton.disabled = true;
-					
+
 					try {
 						// Update LLM service with current settings
 						this.updateLLMServiceFromSettings();
-						
+
 						// Test connection
 						const testResult = await this.llmService.testConnection();
-						
+
 						if (testResult.success) {
 							// Connection successful - update the welcome message
 							const welcomeMessage = this.messages.find(m => m.id === 'welcome');
@@ -623,7 +617,7 @@ export class ChatView extends ItemView {
 		} else {
 			// Plain text for user messages or streaming messages
 			contentEl.setText(message.content);
-			
+
 			// Add streaming indicator
 			if (message.isStreaming) {
 				const cursor = contentEl.createEl('span', {
@@ -637,39 +631,39 @@ export class ChatView extends ItemView {
 		if (message.role === 'assistant' && message.usedNotes && message.usedNotes.length > 0) {
 			// Deduplicate notes by path, keeping only the highest relevance score for each unique document
 			const deduplicatedNotes = this.deduplicateNotesByPath(message.usedNotes);
-			
+
 			const notesInfoEl = messageEl.createEl('div', {
 				cls: 'local-llm-used-notes'
 			});
-			
+
 			const notesHeader = notesInfoEl.createEl('div', {
 				cls: 'local-llm-used-notes-header'
 			});
-			
+
 			// Create header text
 			const headerText = notesHeader.createEl('span', {
 				text: `📚 Used ${deduplicatedNotes.length} note${deduplicatedNotes.length > 1 ? 's' : ''} as context:`
 			});
-			
+
 			// Create toggle link
 			const toggleLink = notesHeader.createEl('a', {
 				cls: 'local-llm-context-toggle',
 				text: this.plugin.settings.contextNotesVisible ? 'Hide' : 'Show'
 			});
-			
+
 			// Add click handler for toggle
 			toggleLink.addEventListener('click', async (e) => {
 				e.preventDefault();
 				const currentVisibility = this.plugin.settings.contextNotesVisible;
 				const newVisibility = !currentVisibility;
-				
+
 				// Update setting
 				this.plugin.settings.contextNotesVisible = newVisibility;
 				await this.plugin.saveSettings();
-				
+
 				// Update toggle text
 				toggleLink.textContent = newVisibility ? 'Hide' : 'Show';
-				
+
 				// Show/hide notes list
 				if (newVisibility) {
 					notesList.removeClass('local-llm-used-notes-list-hidden');
@@ -677,31 +671,31 @@ export class ChatView extends ItemView {
 					notesList.addClass('local-llm-used-notes-list-hidden');
 				}
 			});
-			
+
 			const notesList = notesInfoEl.createEl('div', {
 				cls: `local-llm-used-notes-list ${this.plugin.settings.contextNotesVisible ? '' : 'local-llm-used-notes-list-hidden'}`
 			});
-			
+
 			deduplicatedNotes.forEach(note => {
 				const noteEl = notesList.createEl('div', {
 					cls: 'local-llm-used-note-item'
 				});
-				
+
 				const noteTitle = noteEl.createEl('span', {
 					cls: 'local-llm-used-note-title',
 					text: note.title
 				});
-				
+
 				const notePath = noteEl.createEl('span', {
 					cls: 'local-llm-used-note-path',
 					text: ` (${note.path})`
 				});
-				
+
 				const noteRelevance = noteEl.createEl('span', {
 					cls: 'local-llm-used-note-relevance',
 					text: ` - ${(note.relevance * 100).toFixed(1)}% relevant`
 				});
-				
+
 				// Make the note clickable to open it
 				noteEl.addClass('local-llm-note-clickable');
 				noteEl.addEventListener('click', () => {
@@ -725,14 +719,14 @@ export class ChatView extends ItemView {
 	 */
 	private deduplicateNotesByPath(notes: SearchResult[]): SearchResult[] {
 		const notesByPath = new Map<string, SearchResult>();
-		
+
 		for (const note of notes) {
 			const existing = notesByPath.get(note.path);
 			if (!existing || note.relevance > existing.relevance) {
 				notesByPath.set(note.path, note);
 			}
 		}
-		
+
 		// Return deduplicated notes sorted by relevance (highest first)
 		return Array.from(notesByPath.values()).sort((a, b) => b.relevance - a.relevance);
 	}
@@ -745,7 +739,7 @@ export class ChatView extends ItemView {
 		this.setSendButtonEnabled(true);
 		this.showStopButton(false);
 		this.currentAbortController = null;
-		
+
 		// Finalize the current streaming message as-is
 		const streamingMessage = this.messages.find(m => m.isStreaming);
 		if (streamingMessage) {
@@ -787,11 +781,11 @@ export class ChatView extends ItemView {
 				const role = m.role === 'user' ? 'You' : 'Assistant';
 				return `[${timestamp}] ${role}:\n${m.content}\n`;
 			});
-		
+
 		const conversationText = conversationMessages.join('\n---\n\n');
-		
+
 		// Copy to clipboard
-		navigator.clipboard.writeText(conversationText).then(() => { 
+		navigator.clipboard.writeText(conversationText).then(() => {
 			new Notice('✅ Conversation copied to clipboard!', 2000);
 		});
 	}
@@ -799,7 +793,7 @@ export class ChatView extends ItemView {
 	private static async getWelcomeMessage(llmService: LLMService): Promise<string> {
 		// Test the connection
 		const testResult = await llmService.testConnection();
-		
+
 		if (testResult.success) {
 			return `What's on your mind?`;
 		} else {
@@ -870,7 +864,7 @@ Once your server is running, click the test connection button below.`;
 	 */
 	showRAGProgress(current: number, total: number, message: string): void {
 		const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
-		
+
 		this.ragStatusContent.innerHTML = `
 			<div class="local-llm-rag-progress">
 				<div class="local-llm-rag-progress-header">

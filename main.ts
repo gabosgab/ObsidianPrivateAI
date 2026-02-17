@@ -47,7 +47,7 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	maxTokens: 10000,
 	temperature: 0.7,
 	// Default system prompt
-	systemPrompt: '',
+	systemPrompt: "You are a helpful assistant with access to the user's Obsidian vault. When provided with context from their notes, use that information to provide more accurate and relevant responses. Reference specific notes when appropriate, but focus on answering the user's question clearly and concisely.",
 	// Search defaults
 	searchMaxResults: 5,
 	searchContextPercentage: 50,
@@ -78,10 +78,10 @@ export default class LocalLLMPlugin extends Plugin {
 		LoggingUtility.initialize();
 
 		await this.loadSettings();
-		
+
 		// Set developer logging based on settings
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
-		
+
 		// Create LLM service for image processing
 		const { createLLMService } = await import('./LLMService');
 		this.llmService = createLLMService({
@@ -90,7 +90,7 @@ export default class LocalLLMPlugin extends Plugin {
 			temperature: this.settings.temperature,
 			systemPrompt: this.settings.systemPrompt
 		});
-		
+
 		// Initialize RAG service (always enabled with auto-maintenance)
 		this.ragService = new RAGService(this.app, {
 			endpoint: this.settings.embeddingEndpoint,
@@ -106,12 +106,12 @@ export default class LocalLLMPlugin extends Plugin {
 				this.notifyChatViewsOfRAGComplete();
 			}
 		});
-		
+
 		// Initialize image text extractor in RAG service
 		this.ragService.initializeImageTextExtractor(this.llmService);
-				
+
 		await this.ragService.initialize(this.settings);
-		
+
 		// Always start file watcher since RAG is always enabled
 		this.ragService.startFileWatcher();
 
@@ -141,11 +141,10 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async onunload() {
 		LoggingUtility.log('Unloading Private AI Chat plugin');
-		
-		// Stop RAG file watcher and close database
+
+		// Stop RAG file watcher and close database gracefully
 		if (this.ragService) {
-			this.ragService.stopFileWatcher();
-			await this.ragService.close();
+			await this.ragService.shutdown();
 		}
 	}
 
@@ -155,10 +154,10 @@ export default class LocalLLMPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-		
+
 		// Update developer logging setting
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
-		
+
 		// Update LLM service config
 		if (this.llmService) {
 			const { createLLMService } = await import('./LLMService');
@@ -168,13 +167,13 @@ export default class LocalLLMPlugin extends Plugin {
 				temperature: this.settings.temperature,
 				systemPrompt: this.settings.systemPrompt
 			});
-			
+
 			// Re-initialize image text extractor with updated LLM service
 			if (this.ragService) {
 				this.ragService.initializeImageTextExtractor(this.llmService);
 			}
 		}
-		
+
 		// Update RAG service embedding config
 		if (this.ragService) {
 			this.ragService.updateEmbeddingConfig({
@@ -182,7 +181,7 @@ export default class LocalLLMPlugin extends Plugin {
 				model: this.settings.embeddingModel
 			});
 		}
-		
+
 		// Notify all open chat views about the settings change
 		this.notifyChatViewsOfSettingsChange();
 	}
@@ -272,12 +271,12 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			let valueLabel: HTMLSpanElement | null = null;
 			setting.addSlider(slider => {
 				slider.setLimits(opts.min, opts.max, opts.step)
-				.setValue(opts.value)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					if (valueLabel) valueLabel.textContent = opts.format ? opts.format(value) : value.toString();
-					await opts.onChange(value);
-				});
+					.setValue(opts.value)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						if (valueLabel) valueLabel.textContent = opts.format ? opts.format(value) : value.toString();
+						await opts.onChange(value);
+					});
 				slider.sliderEl.classList.add('local-llm-settings-slider');
 				// Live update label as slider moves
 				slider.sliderEl.addEventListener('input', (e: Event) => {
@@ -323,16 +322,16 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.addDropdown(dropdown => {
 				// Add empty option for no model selection
 				dropdown.addOption('', 'Auto (server chooses)');
-				
+
 				// Set current value from saved settings
 				const savedModel = this.plugin.settings.model || '';
 				dropdown.setValue(savedModel);
-				
+
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.model = value === '' ? undefined : value;
 					await this.plugin.saveSettings();
 				});
-				
+
 				// Store reference to dropdown for dynamic updates
 				(this as any).modelDropdown = dropdown;
 			});
@@ -391,7 +390,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			}
 		});
 		systemPromptTextArea.value = this.plugin.settings.systemPrompt;
-		
+
 		systemPromptTextArea.addEventListener('input', async () => {
 			this.plugin.settings.systemPrompt = systemPromptTextArea.value;
 			await this.plugin.saveSettings();
@@ -458,18 +457,18 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					button.setButtonText('Updating...');
 					button.setDisabled(true);
-					
+
 					try {
 						await this.plugin.ragService.buildIndex((current, total, message) => {
 							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
 						});
-						
+
 						// Update stats display
 						const newStats = this.plugin.ragService.getStats();
 						this.updateStatusDisplay(containerEl, newStats);
-						
+
 						// Notify chat views that indexing is complete
-						this.plugin.notifyChatViewsOfRAGComplete();						
+						this.plugin.notifyChatViewsOfRAGComplete();
 					} catch (error) {
 						LoggingUtility.error('RAG update failed:', error);
 						new Notice(`RAG database update failed: ${error.message}`);
@@ -489,19 +488,19 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					button.setButtonText('Rebuilding...');
 					button.setDisabled(true);
-					
+
 					try {
 						await this.plugin.ragService.forceCompleteRebuildIndex((current, total, message) => {
 							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
 						});
-						
+
 						// Update stats display
 						const newStats = this.plugin.ragService.getStats();
 						this.updateStatusDisplay(containerEl, newStats);
-						
+
 						// Notify chat views that indexing is complete
 						this.plugin.notifyChatViewsOfRAGComplete();
-						
+
 						new Notice('RAG database completely rebuilt!');
 					} catch (error) {
 						LoggingUtility.error('RAG rebuild failed:', error);
@@ -575,17 +574,17 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					button.setButtonText('Testing...');
 					button.setDisabled(true);
-					
+
 					try {
 						// Update the embedding service config with current settings
 						this.plugin.ragService.updateEmbeddingConfig({
 							endpoint: this.plugin.settings.embeddingEndpoint,
 							model: this.plugin.settings.embeddingModel
 						});
-						
+
 						// Test the connection
 						const result = await this.plugin.ragService.testEmbeddingConnection();
-						
+
 						if (result.success) {
 							new Notice(`✅ Embedding API connection successful! Embedding dimension: ${result.dimensions}`);
 						} else {
@@ -623,16 +622,16 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					button.setButtonText('Processing...');
 					button.setDisabled(true);
-					
+
 					try {
 						await this.plugin.ragService.processImagesManually((current, total, message) => {
 							this.plugin.notifyChatViewsOfRAGProgress(current, total, message);
 						});
-						
+
 						// Update stats display
 						const newStats = this.plugin.ragService.getStats();
 						this.updateStatusDisplay(containerEl, newStats);
-						
+
 						new Notice('Image processing completed successfully!');
 					} catch (error) {
 						LoggingUtility.error('Image processing failed:', error);
@@ -690,7 +689,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 				// Test connection
 				const result = await llmService.testConnection();
-				
+
 				if (result.success) {
 					new Notice('✅ Connection successful! Your LLM server is working.');
 					testButton.setText('Test connection');
@@ -745,11 +744,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 			// Fetch available models
 			const models = await llmService.getAvailableModels();
-			
+
 			// Clear dropdown and add default option
 			dropdown.selectEl.innerHTML = '';
 			dropdown.addOption('', 'Auto (server chooses)');
-			
+
 			// Add available models
 			if (models.length > 0) {
 				models.forEach(model => {
@@ -773,17 +772,17 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		} catch (error) {
 			LoggingUtility.error('Failed to load available models:', error);
-			
+
 			// Show error state
 			dropdown.selectEl.innerHTML = '';
 			dropdown.addOption('', 'Auto (server chooses)');
 			dropdown.addOption('', 'Failed to load models');
-			
+
 			// Restore saved model even in error state
 			const savedModel = this.plugin.settings.model || '';
 			dropdown.setValue(savedModel);
 			dropdown.selectEl.disabled = false;
-			
+
 			// Show notice to user
 			new Notice('Failed to load models from LM Studio. Please check your API endpoint and ensure LM Studio is running.');
 		}

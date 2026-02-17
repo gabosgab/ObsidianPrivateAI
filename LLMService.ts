@@ -12,7 +12,7 @@ export interface LLMConfig {
 // Centralized error message function
 function getLLMErrorMessage(error: Error, endpoint?: string): string {
 	// Check if it's a network/connection error
-	if (error.message.includes('Failed to fetch') || 
+	if (error.message.includes('Failed to fetch') ||
 		error.message.includes('NetworkError') ||
 		error.message.includes('ERR_NETWORK') ||
 		error.message.includes('ERR_CONNECTION_REFUSED') ||
@@ -23,18 +23,18 @@ function getLLMErrorMessage(error: Error, endpoint?: string): string {
 * Check that Cross-Origin-Resource-Sharing CORS is enabled		
 `;
 	}
-	
+
 	// Check if it's a timeout error
 	if (error.name === 'AbortError' && error.message.includes('timeout')) {
 		return 'Request cancelled';
 	}
-	
+
 	// Check if it's a server error (5xx)
-	if (error.message.includes('500') || error.message.includes('502') || 
+	if (error.message.includes('500') || error.message.includes('502') ||
 		error.message.includes('503') || error.message.includes('504')) {
 		return 'Is your LLM server running? 500 error';
 	}
-	
+
 	// For other errors, return a generic message
 	return `## ⚠️ Connection Error
 
@@ -118,12 +118,12 @@ export class LLMService {
 	async sendMessage(message: string, conversationHistory: ChatMessage[] = []): Promise<string> {
 		try {
 			const messages: ChatMessage[] = [];
-			
+
 			// Add system prompt if configured
 			if (this.config.systemPrompt && this.config.systemPrompt.trim()) {
 				messages.push({ role: 'system', content: this.config.systemPrompt });
 			}
-			
+
 			// Add conversation history and current message
 			messages.push(...conversationHistory, { role: 'user', content: message });
 
@@ -156,15 +156,15 @@ export class LLMService {
 	async sendVisionMessage(text: string, imageBase64: string, conversationHistory: ChatMessage[] = []): Promise<string> {
 		try {
 			const messages: ChatMessage[] = [];
-			
+
 			// Add system prompt if configured
 			if (this.config.systemPrompt && this.config.systemPrompt.trim()) {
 				messages.push({ role: 'system', content: this.config.systemPrompt });
 			}
-			
+
 			// Add conversation history
 			messages.push(...conversationHistory);
-			
+
 			// Create vision message with image and text
 			const visionMessage: ChatMessage = {
 				role: 'user',
@@ -182,7 +182,7 @@ export class LLMService {
 					}
 				]
 			};
-			
+
 			messages.push(visionMessage);
 
 			const request: ChatRequest = {
@@ -196,7 +196,7 @@ export class LLMService {
 			LoggingUtility.log('Vision request payload:', JSON.stringify(request, null, 2));
 
 			const response = await this.makeAPIRequest(request);
-			LoggingUtility.log('Vision reply:', JSON.stringify(response.choices[0]?.message?.content, null, 2));
+			LoggingUtility.log('Raw vision response:', JSON.stringify(response.choices[0]?.message?.content, null, 2));
 			return response.choices[0]?.message?.content || 'No response content';
 		} catch (error) {
 			LoggingUtility.error('Error sending vision message to LLM:', error);
@@ -207,12 +207,12 @@ export class LLMService {
 	async sendMessageStream(message: string, conversationHistory: ChatMessage[] = [], callback: StreamCallback, abortSignal?: AbortSignal): Promise<void> {
 		try {
 			const messages: ChatMessage[] = [];
-			
+
 			// Add system prompt if configured
 			if (this.config.systemPrompt && this.config.systemPrompt.trim()) {
 				messages.push({ role: 'system', content: this.config.systemPrompt });
 			}
-			
+
 			// Add conversation history and current message
 			messages.push(...conversationHistory, { role: 'user', content: message });
 
@@ -318,7 +318,7 @@ export class LLMService {
 			try {
 				while (true) {
 					const { done, value } = await reader.read();
-					
+
 					if (done) {
 						// Process any remaining buffer
 						if (buffer.trim() && !isCompleted) {
@@ -341,7 +341,7 @@ export class LLMService {
 					for (const line of lines) {
 						if (line.trim() && line.startsWith('data: ')) {
 							const data = line.slice(6); // Remove 'data: ' prefix
-							
+
 							if (data === '[DONE]') {
 								if (!isCompleted) {
 									callback('', true); // Signal completion
@@ -368,13 +368,13 @@ export class LLMService {
 			}
 		} catch (error) {
 			LoggingUtility.error('Streaming fetch error details:', error);
-			
+
 			// Handle specific error types
 			if (error.name === 'AbortError') {
 				// Re-throw as AbortError so the caller can detect user cancellation
 				throw error;
 			}
-			
+
 			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
 		}
 	}
@@ -393,7 +393,7 @@ export class LLMService {
 			if (choice.delta?.content && !isCompleted) {
 				callback(choice.delta.content, false);
 			}
-			
+
 			if (choice.finish_reason && !isCompleted) {
 				callback('', true); // Signal completion
 				return;
@@ -405,7 +405,7 @@ export class LLMService {
 	async testConnection(): Promise<{ success: boolean; error?: string }> {
 		try {
 			LoggingUtility.log('Testing connection to:', this.config.apiEndpoint);
-			
+
 			// Create a simple test request asking for a smiley face
 			const testRequest: ChatRequest = {
 				messages: [{ role: 'user', content: 'Return a smiley face' }],
@@ -418,22 +418,22 @@ export class LLMService {
 			if (this.config.model) {
 				testRequest.model = this.config.model;
 			}
-			
+
 			const response = await this.makeAPIRequest(testRequest);
-			
+
 			// Log the actual response structure for debugging
 			LoggingUtility.log('Connection test - full response structure:', JSON.stringify(response, null, 2));
-			
+
 			// Verify we got a response with content
 			if (!response.choices || response.choices.length === 0) {
 				throw new Error(`Invalid response structure from API - no choices array. Response: ${JSON.stringify(response)}`);
 			}
-			
+
 			const firstChoice = response.choices[0];
 			if (!firstChoice.message) {
 				throw new Error(`Invalid response structure from API - no message in choice. Choice: ${JSON.stringify(firstChoice)}`);
 			}
-			
+
 			// Some APIs might return empty content, which is still a valid connection
 			const content = firstChoice.message.content;
 			if (content === null || content === undefined) {
@@ -444,8 +444,8 @@ export class LLMService {
 			return { success: true };
 		} catch (error) {
 			LoggingUtility.error('Connection test failed:', error);
-			return { 
-				success: false, 
+			return {
+				success: false,
 				error: getLLMErrorMessage(error, this.config.apiEndpoint)
 			};
 		}
@@ -456,11 +456,11 @@ export class LLMService {
 		try {
 			const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
 			LoggingUtility.log('Fetching models from:', modelsEndpoint);
-			
+
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
 			};
-			
+
 			const response = await requestUrl({
 				url: modelsEndpoint,
 				method: 'GET',
@@ -482,18 +482,18 @@ export class LLMService {
 	// Method to validate configuration
 	validateConfig(): { valid: boolean; errors: string[] } {
 		const errors: string[] = [];
-		
+
 		if (!this.config.apiEndpoint) {
 			errors.push('API endpoint is required');
 		}
-		
+
 		// Validate URL format
 		try {
 			new URL(this.config.apiEndpoint);
 		} catch {
 			errors.push('Invalid API endpoint URL format');
 		}
-		
+
 		return {
 			valid: errors.length === 0,
 			errors

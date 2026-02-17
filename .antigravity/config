@@ -1,0 +1,31 @@
+# .antigravity/config
+project:
+  name: "Obsidian Private AI"
+  root: "."
+  write_mode: "in-place" # Prevents the temp folder issue
+
+context:
+  languages: ["typescript", "javascript"]
+  exclude: 
+    - "**/node_modules/**"
+    - "**/dist/**"
+    - ".git/**"
+
+safety:
+  read_only_files: ["package-lock.json"]
+  mask_patterns:
+    - "AI_API_KEY"
+    - "DB_PASSWORD"
+
+instructions:
+  coding_standards:
+    - "Always follow TypeScript and Obsidian Plugin coding conventions."
+    - "If existing code violates these conventions, refactor it to comply during the edit."
+    - "Strictly avoid 'any' types; use specific interfaces or 'unknown' if necessary."
+  
+  project_specifics:
+    - "Use 'LoggingUtility' for all logging operations; do not use console.log or other libraries."
+  
+  post_processing:
+    - "After every code modification, automatically run 'npm run build' to verify compilation."
+    - "If the build fails, analyze the error and attempt a fix immediately."

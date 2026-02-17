@@ -180,3 +180,4 @@ vector-index/image-embeddings.json
 **/embeddings.json
 **/text-embeddings.json
 **/image-embeddings.json
+vector-index
