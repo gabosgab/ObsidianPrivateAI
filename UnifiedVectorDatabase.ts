@@ -1,6 +1,8 @@
 import { LoggingUtility } from './LoggingUtility';
 import { App } from 'obsidian';
 import initSqlJs from '@webreflection/sql.js';
+// @ts-ignore
+import sqlWasm from 'sql.js/dist/sql-wasm.wasm';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MigrationRunner } from './MigrationRunner';
@@ -53,11 +55,9 @@ export class UnifiedVectorDatabase {
 			}
 
 			// Open database connection
-			// Load WASM file from plugin directory (two levels up from db file: vector-index/embeddings.db -> plugin/sql-wasm.wasm)
-			const wasmPath = path.join(path.dirname(path.dirname(this.dbPath)), 'sql-wasm.wasm');
-			const wasmBinary = fs.readFileSync(wasmPath);
+			// Load WASM file from imported binary (inlined by esbuild)
 			const SQL = await initSqlJs({
-				wasmBinary
+				wasmBinary: sqlWasm
 			});
 
 			// Load database if it exists, otherwise create new

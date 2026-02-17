@@ -41,21 +41,10 @@ const buildOptions = {
 	treeShaking: true,
 	outfile: 'main.js',
 	tsconfig: 'tsconfig.json',
-	plugins: [{
-		name: 'copy-wasm',
-		setup(build) {
-			build.onEnd(() => {
-				const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
-				const outPath = path.join(process.cwd(), 'sql-wasm.wasm');
-				try {
-					fs.copyFileSync(wasmPath, outPath);
-					console.log('Copied sql-wasm.wasm to output directory');
-				} catch (e) {
-					console.error('Failed to copy sql-wasm.wasm:', e);
-				}
-			});
-		}
-	}],
+	loader: {
+		".wasm": "binary",
+	},
+	plugins: [],
 };
 
 if (!prod) {
