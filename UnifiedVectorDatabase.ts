@@ -3,6 +3,7 @@ import { App } from 'obsidian';
 import initSqlJs from '@webreflection/sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import { MigrationRunner } from './MigrationRunner';
 
 export interface VectorDocument {
 	id: string; // unique id for the paragraph (e.g., "file.md#p1" or "image.png#c1")
@@ -31,6 +32,8 @@ export class UnifiedVectorDatabase {
 	private dbPath: string;
 	private app: App;
 	private dimension: number = 0;
+
+	private readonly CURRENT_SCHEMA_VERSION = 1;
 
 	constructor(app: App, dbPath: string) {
 		this.app = app;
@@ -73,49 +76,58 @@ export class UnifiedVectorDatabase {
 				LoggingUtility.warn("Could not set WAL mode (might be unsupported in this WASM build):", e);
 			}
 
-			// Create the documents table if it doesn't exist
+			// Initialize schema version table
 			this.db.run(`
-				CREATE TABLE IF NOT EXISTS documents (
-					id TEXT PRIMARY KEY,
-					file_path TEXT NOT NULL,
-					file_name TEXT,
-					title TEXT NOT NULL,
-					paragraph_index INTEGER NOT NULL,
-					paragraph_text TEXT NOT NULL,
-					file_checksum TEXT NOT NULL,
-					last_modified INTEGER,
-					file_size INTEGER,
-					source_type TEXT NOT NULL CHECK(source_type IN ('markdown', 'image')),
-					extracted_text INTEGER DEFAULT 0,
-					vector_json TEXT NOT NULL,
-					dimension INTEGER NOT NULL,
-					created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-					updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+				CREATE TABLE IF NOT EXISTS schema_versions (
+					version INTEGER PRIMARY KEY,
+					migrated_at INTEGER NOT NULL
 				);
 			`);
 
-			this.db.run(`CREATE INDEX IF NOT EXISTS idx_file_path ON documents(file_path);`);
-			this.db.run(`CREATE INDEX IF NOT EXISTS idx_source_type ON documents(source_type);`);
-			this.db.run(`CREATE INDEX IF NOT EXISTS idx_file_checksum ON documents(file_checksum);`);
-
-			// Get dimension from first document if exists
-			const dimStmt = this.db.prepare('SELECT dimension FROM documents LIMIT 1');
-			if (dimStmt.step()) {
-				const row = dimStmt.getAsObject();
-				if (row.dimension) {
-					this.dimension = row.dimension;
-					LoggingUtility.log(`Loaded vector dimension: ${this.dimension} from database`);
+			// Check current version
+			let currentVersion = 0;
+			try {
+				const stmt = this.db.prepare('SELECT MAX(version) as v FROM schema_versions');
+				if (stmt.step()) {
+					const row = stmt.getAsObject();
+					if (row.v !== null) {
+						currentVersion = Number(row.v);
+					}
 				}
+				stmt.free();
+			} catch (e) {
+				LoggingUtility.error('Error checking schema version:', e);
 			}
-			dimStmt.free();
 
-			// Get document count
-			const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM documents');
-			countStmt.step();
-			const countResult = countStmt.getAsObject();
-			countStmt.free();
+			LoggingUtility.log(`Current database schema version: ${currentVersion}`);
 
-			LoggingUtility.log(`Loaded unified vector database with ${countResult.count} documents`);
+			// Check for legacy database (has documents table but no schema version)
+			if (currentVersion === 0) {
+				const tableCheck = this.db.prepare("SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name='documents'");
+				if (tableCheck.step()) {
+					if (tableCheck.getAsObject().count > 0) {
+						currentVersion = 1;
+						// Mark as version 1
+						this.db.run('INSERT INTO schema_versions (version, migrated_at) VALUES (?, ?)', [1, Date.now()]);
+						LoggingUtility.log('Detected legacy database, validated as schema version 1');
+					}
+				}
+				tableCheck.free();
+			}
+
+			// Run migrations
+			try {
+				const runner = new MigrationRunner();
+				await runner.run(this.db, currentVersion);
+
+				// Save immediately if any migrations ran
+				// We can't easily know if migrations ran without checking version again or having runner return boolean
+				// But saving is cheap enough here
+				await this.save();
+			} catch (error) {
+				LoggingUtility.error('Migration failed:', error);
+				throw error;
+			}
 		} catch (error) {
 			LoggingUtility.error('Failed to load unified vector database:', error);
 			throw error;
