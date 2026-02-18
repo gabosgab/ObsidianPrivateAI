@@ -7,7 +7,8 @@
 	flex-direction: column;
 	margin: 0;
 	padding: 0;
-	overflow: hidden; /* Prevent body scrolling */
+	overflow: hidden;
+	/* Prevent body scrolling */
 }
 
 /* Fixed header */
@@ -18,8 +19,10 @@
 	padding: 10px 15px;
 	background-color: var(--background-primary);
 	border-bottom: 1px solid var(--background-modifier-border);
-	flex-shrink: 0; /* Prevent shrinking */
-	z-index: 10; /* Ensure it stays on top */
+	flex-shrink: 0;
+	/* Prevent shrinking */
+	z-index: 10;
+	/* Ensure it stays on top */
 }
 
 /* Main chat container with flexbox layout */
@@ -29,7 +32,8 @@
 	height: 100%;
 	max-height: 100%;
 	flex: 1;
-	overflow: hidden; /* Prevent container scrolling */
+	overflow: hidden;
+	/* Prevent container scrolling */
 }
 
 .local-llm-messages {
@@ -39,7 +43,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	min-height: 0; /* Important for flex child scrolling */
+	min-height: 0;
+	/* Important for flex child scrolling */
 }
 
 .local-llm-message {
@@ -56,6 +61,12 @@
 	align-self: flex-end;
 	background-color: var(--interactive-accent);
 	color: var(--text-on-accent);
+}
+
+.local-llm-message-user .local-llm-message-content {
+	user-select: text !important;
+	-webkit-user-select: text !important;
+	cursor: text;
 }
 
 .local-llm-message-assistant {
@@ -95,19 +106,42 @@
 
 /* Markdown styling for assistant messages */
 .local-llm-message-assistant .local-llm-message-content {
+
 	/* Headers */
-	h1, h2, h3, h4, h5, h6 {
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
 		margin: 10px 0 5px 0;
 		font-weight: 600;
 		color: var(--text-normal);
 	}
 
-	h1 { font-size: 1.4em; }
-	h2 { font-size: 1.3em; }
-	h3 { font-size: 1.2em; }
-	h4 { font-size: 1.1em; }
-	h5 { font-size: 1.0em; }
-	h6 { font-size: 0.9em; }
+	h1 {
+		font-size: 1.4em;
+	}
+
+	h2 {
+		font-size: 1.3em;
+	}
+
+	h3 {
+		font-size: 1.2em;
+	}
+
+	h4 {
+		font-size: 1.1em;
+	}
+
+	h5 {
+		font-size: 1.0em;
+	}
+
+	h6 {
+		font-size: 0.9em;
+	}
 
 	/* Paragraphs */
 	p {
@@ -115,7 +149,8 @@
 	}
 
 	/* Lists */
-	ul, ol {
+	ul,
+	ol {
 		margin: 5px 0;
 		padding-left: 20px;
 	}
@@ -171,7 +206,8 @@
 		width: 100%;
 	}
 
-	th, td {
+	th,
+	td {
 		border: 1px solid var(--background-modifier-border);
 		padding: 6px 8px;
 		text-align: left;
@@ -214,11 +250,11 @@
 	}
 
 	/* First and last elements */
-	> *:first-child {
+	>*:first-child {
 		margin-top: 0;
 	}
 
-	> *:last-child {
+	>*:last-child {
 		margin-bottom: 0;
 	}
 }
@@ -235,8 +271,10 @@
 	padding: 10px;
 	border-top: 1px solid var(--background-modifier-border);
 	background-color: var(--background-primary);
-	flex-shrink: 0; /* Prevent shrinking */
-	z-index: 10; /* Ensure it stays on top */
+	flex-shrink: 0;
+	/* Prevent shrinking */
+	z-index: 10;
+	/* Ensure it stays on top */
 }
 
 .local-llm-input {
@@ -318,8 +356,16 @@
 }
 
 @keyframes blink {
-	0%, 50% { opacity: 1; }
-	51%, 100% { opacity: 0; }
+
+	0%,
+	50% {
+		opacity: 1;
+	}
+
+	51%,
+	100% {
+		opacity: 0;
+	}
 }
 
 /* Loading animation for thinking state */
@@ -342,8 +388,13 @@
 }
 
 @keyframes spin {
-	0% { transform: translateY(-50%) rotate(0deg); }
-	100% { transform: translateY(-50%) rotate(360deg); }
+	0% {
+		transform: translateY(-50%) rotate(0deg);
+	}
+
+	100% {
+		transform: translateY(-50%) rotate(360deg);
+	}
 }
 
 /* Responsive design */
@@ -351,11 +402,11 @@
 	.local-llm-message {
 		max-width: 95%;
 	}
-	
+
 	.local-llm-input-container {
 		flex-direction: column;
 	}
-	
+
 	.local-llm-send-button {
 		align-self: stretch;
 	}
@@ -433,9 +484,17 @@
 }
 
 @keyframes pulse {
-	0% { opacity: 1; }
-	50% { opacity: 0.7; }
-	100% { opacity: 1; }
+	0% {
+		opacity: 1;
+	}
+
+	50% {
+		opacity: 0.7;
+	}
+
+	100% {
+		opacity: 1;
+	}
 }
 
 /* Used notes display */
@@ -532,12 +591,45 @@
 }
 
 .local-llm-copy-button:hover {
-	background-color: var(--background-modifier-hover);
+	background-color: var(--background-secondary);
 }
 
 .local-llm-copy-button.copied {
-	background-color: var(--interactive-success);
+	background-color: transparent !important;
+	/* Let pseudo handle background */
 	color: var(--text-on-accent);
+	opacity: 1 !important;
+	position: absolute;
+	/* Already absolute but reinforcing for pseudo */
+	z-index: 10;
+	overflow: hidden;
+	/* Ensure pseudo stays within border-radius */
+}
+
+.local-llm-copy-button.copied::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--background-primary);
+	/* Base opaque layer */
+	z-index: -2;
+}
+
+.local-llm-copy-button.copied::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--interactive-success);
+	/* Tint layer */
+	opacity: 1;
+	/* Ensure tint is visible */
+	z-index: -1;
 }
 
 /* Refresh button for installation messages */
@@ -664,7 +756,7 @@
 	border-radius: 50%;
 	background: #222;
 	border: 3px solid var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	transition: background 0.2s, border 0.2s;
 }
 
@@ -678,7 +770,7 @@
 	border-radius: 50%;
 	background: #222;
 	border: 3px solid var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	transition: background 0.2s, border 0.2s;
 }
 
@@ -692,7 +784,7 @@
 	border-radius: 50%;
 	background: #222;
 	border: 3px solid var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	transition: background 0.2s, border 0.2s;
 }
 
@@ -709,6 +801,7 @@
 .local-llm-settings-slider::-ms-fill-lower {
 	background: var(--interactive-accent);
 }
+
 .local-llm-settings-slider::-ms-fill-upper {
 	background: var(--interactive-accent-hover);
 }
@@ -778,7 +871,7 @@
 
 .local-llm-selectable-content {
 	user-select: text;
-} 
+}
 
 /* RAG Progress Floating Dialog Styles */
 .rag-progress-floating-dialog {
@@ -818,7 +911,8 @@
 	cursor: move;
 	user-select: none;
 	color: var(--text-normal);
-	padding-right: 30px; /* Space for minimize button */
+	padding-right: 30px;
+	/* Space for minimize button */
 	position: relative;
 }
 
@@ -910,6 +1004,7 @@
 		transform: translateX(100%);
 		opacity: 0;
 	}
+
 	to {
 		transform: translateX(0);
 		opacity: 1;
@@ -947,7 +1042,7 @@
 /* Error state */
 .rag-progress-message.error {
 	color: var(--text-error) !important;
-} 
+}
 
 /* RAG Status Area */
 .local-llm-rag-status-area {
@@ -1035,4 +1130,4 @@
 	font-size: 11px;
 	color: var(--text-muted);
 	text-align: right;
-} 
+}

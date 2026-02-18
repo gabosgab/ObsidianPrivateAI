@@ -48,6 +48,11 @@
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
 }
+.local-llm-message-user .local-llm-message-content {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  cursor: text;
+}
 .local-llm-message-assistant {
   align-self: flex-start;
   background-color: var(--background-secondary);
@@ -469,11 +474,36 @@
   opacity: 1;
 }
 .local-llm-copy-button:hover {
-  background-color: var(--background-modifier-hover);
+  background-color: var(--background-secondary);
 }
 .local-llm-copy-button.copied {
-  background-color: var(--interactive-success);
+  background-color: transparent !important;
   color: var(--text-on-accent);
+  opacity: 1 !important;
+  position: absolute;
+  z-index: 10;
+  overflow: hidden;
+}
+.local-llm-copy-button.copied::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background-primary);
+  z-index: -2;
+}
+.local-llm-copy-button.copied::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--interactive-success);
+  opacity: 1;
+  z-index: -1;
 }
 .local-llm-refresh-button {
   background: var(--interactive-accent);

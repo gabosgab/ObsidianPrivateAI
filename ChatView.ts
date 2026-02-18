@@ -548,25 +548,6 @@ export class ChatView extends ItemView {
 				this
 			);
 
-			// Add copy button for assistant messages
-			const copyButton = messageEl.createEl('button', {
-				cls: 'local-llm-copy-button',
-				attr: { 'aria-label': 'Copy message content', 'type': 'button' },
-				text: '🗐'
-			});
-
-			copyButton.addEventListener('click', async () => {
-				await navigator.clipboard.writeText(message.content);
-
-				// Show success feedback
-				copyButton.textContent = '✅';
-				copyButton.classList.add('copied');
-
-				setTimeout(() => {
-					copyButton.textContent = '🗐';
-					copyButton.classList.remove('copied');
-				}, 1000);
-			});
 
 			// Add refresh button for installation messages (welcome messages with installation instructions)
 			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI!')) {
@@ -618,13 +599,34 @@ export class ChatView extends ItemView {
 			// Plain text for user messages or streaming messages
 			contentEl.setText(message.content);
 
-			// Add streaming indicator
 			if (message.isStreaming) {
 				const cursor = contentEl.createEl('span', {
 					cls: 'streaming-cursor',
 					text: '▋'
 				});
 			}
+		}
+
+		// Add copy button for all non-streaming messages (both user and assistant)
+		if (!message.isStreaming) {
+			const copyButton = messageEl.createEl('button', {
+				cls: 'local-llm-copy-button',
+				attr: { 'aria-label': 'Copy message content', 'type': 'button' },
+				text: '🗐'
+			});
+
+			copyButton.addEventListener('click', async () => {
+				await navigator.clipboard.writeText(message.content);
+
+				// Show success feedback
+				copyButton.textContent = '✅';
+				copyButton.classList.add('copied');
+
+				setTimeout(() => {
+					copyButton.textContent = '🗐';
+					copyButton.classList.remove('copied');
+				}, 1000);
+			});
 		}
 
 		// Show used notes information for assistant messages
