@@ -1,4 +1,4 @@
-import { App, TFile, EventRef, Events, Notice, ProgressBarComponent, Plugin, FileSystemAdapter } from 'obsidian';
+import { App, TFile, EventRef, Events, Notice, ProgressBarComponent, Plugin, FileSystemAdapter, PluginManifest } from 'obsidian';
 import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from './UnifiedVectorDatabase';
 import { LoggingUtility } from './LoggingUtility';
 import { SearchResult } from './SearchService';
@@ -62,13 +62,13 @@ export class RAGService {
 	private settings: LocalLLMSettings;
 	private imageProcessingEnabled: boolean = false;
 
-	constructor(app: App, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
+	constructor(app: App, manifest: PluginManifest, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
 
 		// Construct the database path in the plugin's data directory
 		// Get vault root using FileSystemAdapter.getBasePath() for absolute path
 		const configDir = this.app.vault.configDir; // e.g., ".obsidian"
-		const pluginFolderName = 'ObsidianPrivateAI';
+		const pluginFolderName = manifest.id;
 
 		// Get the absolute vault root path
 		const adapter = this.app.vault.adapter;

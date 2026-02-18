@@ -92,7 +92,7 @@ export default class LocalLLMPlugin extends Plugin {
 		});
 
 		// Initialize RAG service (always enabled with auto-maintenance)
-		this.ragService = new RAGService(this.app, {
+		this.ragService = new RAGService(this.app, this.manifest, {
 			endpoint: this.settings.embeddingEndpoint,
 			model: this.settings.embeddingModel
 		}, {
