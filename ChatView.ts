@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent, setIcon } from 'obsidian';
 import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
 import { SearchService, SearchResult } from './SearchService';
 import { LoggingUtility } from './LoggingUtility';
@@ -611,19 +611,19 @@ export class ChatView extends ItemView {
 		if (!message.isStreaming) {
 			const copyButton = messageEl.createEl('button', {
 				cls: 'local-llm-copy-button',
-				attr: { 'aria-label': 'Copy message content', 'type': 'button' },
-				text: '🗐'
+				attr: { 'aria-label': 'Copy message content', 'type': 'button' }
 			});
+			setIcon(copyButton, 'copy');
 
 			copyButton.addEventListener('click', async () => {
 				await navigator.clipboard.writeText(message.content);
 
 				// Show success feedback
-				copyButton.textContent = '✅';
+				setIcon(copyButton, 'check');
 				copyButton.classList.add('copied');
 
 				setTimeout(() => {
-					copyButton.textContent = '🗐';
+					setIcon(copyButton, 'copy');
 					copyButton.classList.remove('copied');
 				}, 1000);
 			});
