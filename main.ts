@@ -125,7 +125,7 @@ export default class LocalLLMPlugin extends Plugin {
 		);
 
 		// Add ribbon icon to open chat
-		this.addRibbonIcon('bot-message-square', 'Open private AI', () => {
+		this.addRibbonIcon('sparkles', 'Open private AI', () => {
 			this.activateView();
 		});
 

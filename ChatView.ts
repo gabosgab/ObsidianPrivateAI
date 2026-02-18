@@ -72,6 +72,10 @@ export class ChatView extends ItemView {
 		return 'Private AI';
 	}
 
+	getIcon(): string {
+		return 'sparkles';
+	}
+
 	async onOpen() {
 		const container = this.containerEl.children[1];
 		container.empty();
