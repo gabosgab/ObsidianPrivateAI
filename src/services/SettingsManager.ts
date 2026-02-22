@@ -19,6 +19,8 @@ export interface LocalLLMSettings {
 	// Developer logging setting
 	enableDeveloperLogging: boolean;
 	enableImageTextExtraction: boolean;
+	excludedFolders: string[];
+	excludedFilePatterns: string[];
 	// RAG settings
 	enableRAG: boolean;
 	ragThreshold: number;
@@ -53,7 +55,9 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
 	// Default context notes visibility
 	contextNotesVisible: false,
-	enableImageTextExtraction: true
+	enableImageTextExtraction: true,
+	excludedFolders: [],
+	excludedFilePatterns: []
 };
 
 export class SettingsManager {

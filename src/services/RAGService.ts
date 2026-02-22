@@ -61,6 +61,7 @@ export class RAGService {
 	private lastActiveFilePath: string | null = null;
 	private settings: LocalLLMSettings;
 	private imageProcessingEnabled: boolean = false;
+	private vaultRootPathNormalized: string = '';
 
 	constructor(app: App, manifest: PluginManifest, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
@@ -86,6 +87,7 @@ export class RAGService {
 		// Construct the full path to the database
 		const absoluteConfigDir = path.join(vaultRoot, configDir);
 		const dbPath = path.join(absoluteConfigDir, 'plugins', pluginFolderName, 'vector-index', 'embeddings.db');
+		this.vaultRootPathNormalized = this.normalizePathForMatching(vaultRoot);
 
 		LoggingUtility.log('RAGService constructor called with dbPath:', dbPath);
 		this.vectorDB = new UnifiedVectorDatabase(this.app, dbPath);
@@ -96,6 +98,142 @@ export class RAGService {
 			silentMode: false,
 			...initOptions
 		};
+	}
+
+	private normalizePathForMatching(value: string): string {
+		return value
+			.replace(/\\/g, '/')
+			.trim()
+			.replace(/^\.\/+/, '')
+			.replace(/\/+/g, '/')
+			.replace(/\/$/, '')
+			.toLowerCase();
+	}
+
+	private wildcardToRegExp(pattern: string): RegExp {
+		const escaped = pattern
+			.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+			.replace(/\*/g, '.*')
+			.replace(/\?/g, '.');
+		return new RegExp(`^${escaped}$`, 'i');
+	}
+
+	private matchesWildcard(value: string, pattern: string): boolean {
+		return this.wildcardToRegExp(pattern).test(value);
+	}
+
+	private normalizeExclusionEntries(values?: string[]): string[] {
+		if (!values || values.length === 0) {
+			return [];
+		}
+
+		return values
+			.map(value => this.normalizePathForMatching(value))
+			.filter(value => value.length > 0);
+	}
+
+	private toVaultRelativePath(value: string): string {
+		const normalized = this.normalizePathForMatching(value);
+		if (!normalized) {
+			return '';
+		}
+
+		if (this.vaultRootPathNormalized &&
+			(normalized === this.vaultRootPathNormalized || normalized.startsWith(this.vaultRootPathNormalized + '/'))) {
+			return normalized.slice(this.vaultRootPathNormalized.length).replace(/^\/+/, '');
+		}
+
+		return normalized;
+	}
+
+	private isExcludedByFolder(file: TFile): boolean {
+		const folderPatterns = this.normalizeExclusionEntries(this.settings?.excludedFolders);
+		if (folderPatterns.length === 0) {
+			return false;
+		}
+
+		const filePath = this.toVaultRelativePath(file.path);
+		for (const pattern of folderPatterns) {
+			const folderPath = this.toVaultRelativePath(pattern);
+			if (!folderPath) {
+				continue;
+			}
+
+			if (folderPath.includes('*') || folderPath.includes('?')) {
+				if (this.matchesWildcard(filePath, folderPath) || this.matchesWildcard(filePath, `${folderPath}/**`)) {
+					return true;
+				}
+				continue;
+			}
+
+			if (filePath === folderPath || filePath.startsWith(folderPath + '/')) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private isExcludedByFilePattern(file: TFile): boolean {
+		const filePatterns = this.normalizeExclusionEntries(this.settings?.excludedFilePatterns);
+		if (filePatterns.length === 0) {
+			return false;
+		}
+
+		const relativePath = this.toVaultRelativePath(file.path);
+		const fileName = this.normalizePathForMatching(file.name);
+		const extensionWithDot = '.' + file.extension.toLowerCase();
+
+		for (const pattern of filePatterns) {
+			const resolvedPattern = this.toVaultRelativePath(pattern);
+			if (!resolvedPattern) {
+				continue;
+			}
+
+			if (resolvedPattern.startsWith('*.') && extensionWithDot === resolvedPattern.slice(1)) {
+				return true;
+			}
+
+			if (resolvedPattern.startsWith('.') && extensionWithDot === resolvedPattern) {
+				return true;
+			}
+
+			if (resolvedPattern.includes('*') || resolvedPattern.includes('?')) {
+				if (this.matchesWildcard(relativePath, resolvedPattern) || this.matchesWildcard(fileName, resolvedPattern)) {
+					return true;
+				}
+				continue;
+			}
+
+			if (relativePath === resolvedPattern ||
+				relativePath.endsWith('/' + resolvedPattern) ||
+				fileName === resolvedPattern ||
+				extensionWithDot === '.' + resolvedPattern) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private isExcludedFile(file: TFile): boolean {
+		return this.isExcludedByFolder(file) || this.isExcludedByFilePattern(file);
+	}
+
+	private shouldIndexMarkdownFile(file: TFile): boolean {
+		return file.extension.toLowerCase() === 'md' && !this.isExcludedFile(file);
+	}
+
+	private shouldIndexImageFile(file: TFile): boolean {
+		return ImageTextExtractor.isImageFile(file) && !this.isExcludedFile(file);
+	}
+
+	private getIncludedMarkdownFiles(): TFile[] {
+		return this.app.vault.getMarkdownFiles().filter(file => this.shouldIndexMarkdownFile(file));
+	}
+
+	private getIncludedImageFiles(): TFile[] {
+		return this.app.vault.getFiles().filter(file => this.shouldIndexImageFile(file));
 	}
 
 	/**
@@ -143,8 +281,8 @@ export class RAGService {
 			});
 			LoggingUtility.log('File types in vault:', Object.fromEntries(fileTypes));
 
-			// Get all image files in the vault
-			const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
+			// Get all image files in the vault (respect exclusion settings)
+			const imageFiles = allFiles.filter(file => this.shouldIndexImageFile(file));
 			LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
 
 			// Log the first few image files for debugging
@@ -613,7 +751,7 @@ export class RAGService {
 
 		try {
 			// Get all image files in the vault
-			const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+			const imageFiles = this.getIncludedImageFiles();
 
 			if (imageFiles.length === 0) {
 				LoggingUtility.log('No image files found in vault');
@@ -700,8 +838,10 @@ export class RAGService {
 		try {
 			LoggingUtility.log('Checking for missing files in database...');
 
-			// Get all current files in the vault
-			const allFiles = this.app.vault.getFiles();
+			// Keep only files that should stay indexed.
+			const allFiles = this.app.vault.getFiles().filter(file =>
+				this.shouldIndexMarkdownFile(file) || this.shouldIndexImageFile(file)
+			);
 			const existingFilePaths = new Set(allFiles.map(f => f.path));
 
 			// Remove obsolete documents from database
@@ -747,7 +887,7 @@ export class RAGService {
 	startFileWatcher(): void {
 		// Watch for file modifications
 		this.fileChangeRef = this.app.vault.on('modify', async (file) => {
-			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
+			if (file instanceof TFile && this.shouldIndexMarkdownFile(file) && !this.isIndexing) {
 				// Skip processing if this is the currently active file being edited
 				if (this.isFileCurrentlyActive(file)) {
 					LoggingUtility.log(`Skipping RAG update for active file: ${file.path}`);
@@ -763,7 +903,7 @@ export class RAGService {
 
 		// Watch for file renames
 		this.fileRenameRef = this.app.vault.on('rename', async (file, oldPath) => {
-			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
+			if (file instanceof TFile && file.extension.toLowerCase() === 'md' && !this.isIndexing) {
 				// Renames should always be processed as they don't interfere with editing
 				this.queueFileUpdate(file, 'rename', oldPath);
 			}
@@ -771,7 +911,7 @@ export class RAGService {
 
 		// Watch for file deletions
 		this.fileDeleteRef = this.app.vault.on('delete', async (file) => {
-			if (file instanceof TFile && file.extension === 'md' && !this.isIndexing) {
+			if (file instanceof TFile && file.extension.toLowerCase() === 'md' && !this.isIndexing) {
 				// Remove from pending updates if it was there
 				this.pendingActiveFileUpdates.delete(file.path);
 
@@ -977,6 +1117,16 @@ export class RAGService {
 		this.isProcessingFileUpdates = true;
 
 		try {
+			if (!this.shouldIndexMarkdownFile(file)) {
+				LoggingUtility.log(`Skipping excluded markdown file update: ${file.path}`);
+				if (oldPath) {
+					await this.vectorDB.removeFileDocuments(oldPath);
+				}
+				await this.vectorDB.removeFileDocuments(file.path);
+				await this.vectorDB.save();
+				return;
+			}
+
 			if (operation === 'modify') {
 				// Check if file actually changed by comparing checksum
 				const newChecksum = await this.calculateCRC32(file);
@@ -1064,8 +1214,8 @@ export class RAGService {
 			if (this.indexingAbortController?.signal.aborted) return;
 			await this.ensureEmbeddingConnection();
 
-			// Get all markdown files
-			const files = this.app.vault.getMarkdownFiles();
+			// Get all markdown files that are not excluded
+			const files = this.getIncludedMarkdownFiles();
 
 			LoggingUtility.log(`Starting to analyze ${files.length} markdown files for changes`);
 
@@ -1104,8 +1254,7 @@ export class RAGService {
 
 			// FIX: Add image files to existingFiles set so they aren't removed as obsolete
 			// The original code only added markdown files, causing removeObsoleteDocuments to delete all image entries
-			const allFiles = this.app.vault.getFiles();
-			const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
+			const imageFiles = this.getIncludedImageFiles();
 			for (const img of imageFiles) {
 				existingFiles.add(img.path);
 			}
@@ -1230,7 +1379,7 @@ export class RAGService {
 				LoggingUtility.log(`Total files in vault during indexing: ${allFiles.length}`);
 
 				// Get all image files in the vault
-				const imageFiles = allFiles.filter(file => ImageTextExtractor.isImageFile(file));
+				const imageFiles = allFiles.filter(file => this.shouldIndexImageFile(file));
 				LoggingUtility.log(`Found ${imageFiles.length} image files in vault during indexing`);
 
 				// Log the first few image files for debugging
@@ -1450,8 +1599,8 @@ export class RAGService {
 			await this.vectorDB.clear();
 			LoggingUtility.log('Cleared ALL existing vector indexes for complete rebuild');
 
-			// Get all markdown files
-			const files = this.app.vault.getMarkdownFiles();
+			// Get all markdown files that are not excluded
+			const files = this.getIncludedMarkdownFiles();
 
 			LoggingUtility.log(`Starting complete rebuild of ${files.length} markdown files`);
 
@@ -1542,7 +1691,7 @@ export class RAGService {
 				LoggingUtility.log('Starting image processing phase...');
 
 				// Get all image files in the vault
-				const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+				const imageFiles = this.getIncludedImageFiles();
 				LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
 
 				if (imageFiles.length > 0) {
@@ -1683,8 +1832,8 @@ export class RAGService {
 				LoggingUtility.log('Cleared markdown documents for rebuild, preserving image documents for checksum checking');
 			}
 
-			// Get all markdown files
-			const files = this.app.vault.getMarkdownFiles();
+			// Get all markdown files that are not excluded
+			const files = this.getIncludedMarkdownFiles();
 
 			LoggingUtility.log(`Starting complete rebuild of ${files.length} markdown files`);
 
@@ -1766,7 +1915,7 @@ export class RAGService {
 				LoggingUtility.log('Starting image processing phase...');
 
 				// Get all image files in the vault
-				const imageFiles = this.app.vault.getFiles().filter(file => ImageTextExtractor.isImageFile(file));
+				const imageFiles = this.getIncludedImageFiles();
 				LoggingUtility.log(`Found ${imageFiles.length} image files in vault`);
 
 				if (imageFiles.length > 0) {

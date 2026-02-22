@@ -381,7 +381,7 @@
   animation: pulse 2s infinite;
 }
 .local-llm-search-indicator::before {
-  content: "\1f50d";
+  content: "\f0\178\201d\8d";
   font-size: 14px;
 }
 @keyframes pulse {
@@ -672,6 +672,56 @@
   margin-top: 8px;
   margin-bottom: 16px;
   resize: vertical;
+}
+.local-llm-exclusion-setting {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 16px;
+  margin: 10px 0 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      95deg,
+      var(--background-primary-alt),
+      var(--background-secondary));
+}
+.local-llm-exclusion-setting .setting-item-info {
+  flex: 1 1 auto;
+  min-width: 220px;
+}
+.local-llm-exclusion-setting .setting-item-control {
+  flex: 0 0 min(420px, 52vw);
+  width: min(420px, 52vw);
+  max-width: 100%;
+  align-self: stretch;
+}
+.local-llm-exclusion-textarea {
+  width: 100%;
+  min-width: 280px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  resize: vertical;
+}
+.local-llm-exclusion-textarea-large {
+  min-height: 116px;
+}
+.local-llm-exclusion-textarea-compact {
+  min-height: 96px;
+}
+@media (max-width: 900px) {
+  .local-llm-exclusion-setting {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .local-llm-exclusion-setting .setting-item-control {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .local-llm-exclusion-textarea {
+    min-width: 0;
+  }
 }
 .local-llm-settings-slider::-moz-range-track {
   height: 4px;

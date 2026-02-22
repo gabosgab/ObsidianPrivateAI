@@ -38,6 +38,9 @@ interface LocalLLMSettings {
 	embeddingModel: string;
 	// Image processing settings
 	enableImageTextExtraction: boolean;
+	// Exclusion settings for indexing/task processing
+	excludedFolders: string[];
+	excludedFilePatterns: string[];
 	// Context notes visibility setting
 	contextNotesVisible: boolean;
 }
@@ -65,6 +68,9 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	embeddingModel: 'text-embedding-nomic-embed-text-v1.5',
 	// Image processing defaults
 	enableImageTextExtraction: true,
+	// Indexing exclusions defaults
+	excludedFolders: [],
+	excludedFilePatterns: [],
 	// Default context notes visibility
 	contextNotesVisible: false
 };
@@ -450,6 +456,42 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			.setName('RAG database status')
 			.setDesc(`Documents indexed: ${ragStats.documentCount} (${detailedStatus.textStats.documentCount} text, ${detailedStatus.imageStats.documentCount} image) | Files: ${ragStats.fileCount} | Last updated: ${ragStats.lastUpdated.toLocaleString()} | Size: ${(ragStats.sizeInBytes / 1024).toFixed(1)} KB | Image processing: ${detailedStatus.imageProcessingEnabled ? 'enabled' : 'disabled'} | Image extractor: ${detailedStatus.imageTextExtractorAvailable ? 'available' : 'unavailable'}`);
 
+		new Setting(containerEl).setName('Indexing Exclusions').setHeading();
+
+		const excludedFoldersSetting = new Setting(containerEl)
+			.setName('Excluded folders')
+			.setDesc('One folder per line. Supports vault-relative paths (e.g. clippings/_resources) or absolute vault paths.')
+			.addTextArea(text => text
+				.setPlaceholder('clippings/_resources\nattachments/generated')
+				.setValue((this.plugin.settings.excludedFolders || []).join('\n'))
+				.then((text) => {
+					text.inputEl.rows = 4;
+					text.inputEl.addClass('local-llm-exclusion-textarea');
+					text.inputEl.addClass('local-llm-exclusion-textarea-large');
+				})
+				.onChange(async (value) => {
+					this.plugin.settings.excludedFolders = this.parseMultilineList(value);
+					await this.plugin.saveSettings();
+				}));
+		excludedFoldersSetting.settingEl.addClass('local-llm-exclusion-setting');
+
+		const excludedFilePatternsSetting = new Setting(containerEl)
+			.setName('Excluded file patterns')
+			.setDesc('One pattern per line. Examples: *.json, *.csv, *.png, Daily/*.tmp')
+			.addTextArea(text => text
+				.setPlaceholder('*.json\n*.csv\n*.png')
+				.setValue((this.plugin.settings.excludedFilePatterns || []).join('\n'))
+				.then((text) => {
+					text.inputEl.rows = 3;
+					text.inputEl.addClass('local-llm-exclusion-textarea');
+					text.inputEl.addClass('local-llm-exclusion-textarea-compact');
+				})
+				.onChange(async (value) => {
+					this.plugin.settings.excludedFilePatterns = this.parseMultilineList(value);
+					await this.plugin.saveSettings();
+				}));
+		excludedFilePatternsSetting.settingEl.addClass('local-llm-exclusion-setting');
+
 		// Smart update RAG database button
 		new Setting(containerEl)
 			.setName('Update RAG database')
@@ -589,13 +631,13 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						const result = await this.plugin.ragService.testEmbeddingConnection();
 
 						if (result.success) {
-							new Notice(`✅ Embedding API connection successful! Embedding dimension: ${result.dimensions}`);
+							new Notice(`Embedding API connection successful. Embedding dimension: ${result.dimensions}`);
 						} else {
-							new Notice(`❌ Embedding API connection failed: ${result.error}`);
+							new Notice(`Embedding API connection failed: ${result.error}`);
 						}
 					} catch (error) {
 						LoggingUtility.error('Embedding test failed:', error);
-						new Notice(`❌ Embedding test failed: ${error.message}`);
+						new Notice(`Embedding test failed: ${error.message}`);
 					} finally {
 						button.setButtonText('Test Embedding');
 						button.setDisabled(false);
@@ -640,7 +682,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						LoggingUtility.error('Image processing failed:', error);
 						// Show user-friendly error message for vision model issues
 						if (error.message.includes('vision capabilities')) {
-							new Notice('❌ Vision Model Required: Your current LLM model does not support image processing. Please switch to a vision model like Gemma 3 in LM Studio and try again.', 8000);
+							new Notice('Vision model required: your current LLM model does not support image processing. Please switch to a vision model like Gemma 3 in LM Studio and try again.', 8000);
 						} else {
 							new Notice(`Image processing failed: ${error.message}`);
 						}
@@ -694,7 +736,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				const result = await llmService.testConnection();
 
 				if (result.success) {
-					new Notice('✅ Connection successful! Your LLM server is working.');
+					new Notice('Connection successful. Your LLM server is working.');
 					testButton.setText('Test connection');
 					testButton.disabled = false;
 				} else {
@@ -702,7 +744,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				}
 			} catch (error) {
 				LoggingUtility.error('Connection test failed:', error);
-				new Notice(`❌ Connection failed: ${error.message}`);
+				new Notice(`Connection failed: ${error.message}`);
 				testButton.setText('Test connection');
 				testButton.disabled = false;
 			}
@@ -809,5 +851,12 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				break;
 			}
 		}
+	}
+
+	private parseMultilineList(value: string): string[] {
+		return value
+			.split('\n')
+			.map(line => line.trim())
+			.filter(line => line.length > 0);
 	}
 }
