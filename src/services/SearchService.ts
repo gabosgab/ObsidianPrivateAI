@@ -1,5 +1,5 @@
 import { App, TFile, CachedMetadata, getAllTags, MarkdownView } from 'obsidian';
-import { LoggingUtility } from './LoggingUtility';
+import { LoggingUtility } from '../utils/LoggingUtility';
 import { RAGService, RAGSearchResult } from './RAGService';
 
 export interface SearchResult {

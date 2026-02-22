@@ -1,6 +1,6 @@
 import { Migration } from './migrations/Migration';
 import { Migration001 } from './migrations/001_initial_schema';
-import { LoggingUtility } from './LoggingUtility';
+import { LoggingUtility } from '../utils/LoggingUtility';
 
 export class MigrationRunner {
     private migrations: Migration[] = [];

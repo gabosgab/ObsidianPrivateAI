@@ -1,9 +1,9 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice } from 'obsidian';
-import { ChatView } from './ChatView';
-import { LoggingUtility } from './LoggingUtility';
-import { RAGService } from './RAGService';
-import './styles.css';
-import manifest from './manifest.json';
+import { ChatView } from './views/ChatView';
+import { LoggingUtility } from './utils/LoggingUtility';
+import { RAGService } from './services/RAGService';
+import '../styles.css';
+import manifest from '../manifest.json';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -83,7 +83,7 @@ export default class LocalLLMPlugin extends Plugin {
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
 
 		// Create LLM service for image processing
-		const { createLLMService } = await import('./LLMService');
+		const { createLLMService } = await import('./services/LLMService');
 		this.llmService = createLLMService({
 			apiEndpoint: this.settings.apiEndpoint,
 			maxTokens: this.settings.maxTokens,
@@ -163,7 +163,7 @@ export default class LocalLLMPlugin extends Plugin {
 
 		// Update LLM service config
 		if (this.llmService) {
-			const { createLLMService } = await import('./LLMService');
+			const { createLLMService } = await import('./services/LLMService');
 			this.llmService = createLLMService({
 				apiEndpoint: this.settings.apiEndpoint,
 				maxTokens: this.settings.maxTokens,
@@ -675,7 +675,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 			try {
 				// Create a temporary LLM service to test
-				const { createLLMService } = await import('./LLMService');
+				const { createLLMService } = await import('./services/LLMService');
 				const llmService = createLLMService({
 					apiEndpoint: this.plugin.settings.apiEndpoint,
 					maxTokens: this.plugin.settings.maxTokens,
@@ -740,7 +740,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			dropdown.selectEl.innerHTML = '<option value="">Loading models...</option>';
 
 			// Create a temporary LLM service to fetch models
-			const { createLLMService } = await import('./LLMService');
+			const { createLLMService } = await import('./services/LLMService');
 			const llmService = createLLMService({
 				apiEndpoint: this.plugin.settings.apiEndpoint
 			});

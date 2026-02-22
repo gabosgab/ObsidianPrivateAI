@@ -1,8 +1,8 @@
 import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, DropdownComponent, setIcon } from 'obsidian';
-import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from './LLMService';
-import { SearchService, SearchResult } from './SearchService';
-import { LoggingUtility } from './LoggingUtility';
-import LocalLLMPlugin, { ContextMode } from './main';
+import { LLMService, createLLMService, ChatMessage as LLMChatMessage, StreamCallback } from '../services/LLMService';
+import { SearchService, SearchResult } from '../services/SearchService';
+import { LoggingUtility } from '../utils/LoggingUtility';
+import LocalLLMPlugin, { ContextMode } from '../main';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 

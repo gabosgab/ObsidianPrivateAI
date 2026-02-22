@@ -1,6 +1,6 @@
 import { App, TFile, EventRef, Events, Notice, ProgressBarComponent, Plugin, FileSystemAdapter, PluginManifest } from 'obsidian';
-import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from './UnifiedVectorDatabase';
-import { LoggingUtility } from './LoggingUtility';
+import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from '../db/UnifiedVectorDatabase';
+import { LoggingUtility } from '../utils/LoggingUtility';
 import { SearchResult } from './SearchService';
 import { EmbeddingService, EmbeddingConfig } from './EmbeddingService';
 import { ImageTextExtractor } from './ImageTextExtractor';

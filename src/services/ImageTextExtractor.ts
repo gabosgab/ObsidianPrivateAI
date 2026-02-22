@@ -1,6 +1,6 @@
 import { TFile, Notice } from 'obsidian';
 import { LLMService } from './LLMService';
-import { LoggingUtility } from './LoggingUtility';
+import { LoggingUtility } from '../utils/LoggingUtility';
 
 export interface ImageTextExtractionResult {
 	success: boolean;

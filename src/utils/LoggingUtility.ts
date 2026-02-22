@@ -1,5 +1,3 @@
-import LocalLLMPlugin from './main';
-
 export class LoggingUtility {
 	private static pluginReady: boolean = false;
 	private static developerLoggingEnabled: boolean = false;

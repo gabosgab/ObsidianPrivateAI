@@ -1,4 +1,4 @@
-import { LoggingUtility } from './LoggingUtility';
+import { LoggingUtility } from '../utils/LoggingUtility';
 import { App } from 'obsidian';
 import initSqlJs from '@webreflection/sql.js';
 // @ts-ignore

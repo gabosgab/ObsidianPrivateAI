@@ -1,5 +1,5 @@
 import { Migration } from './Migration';
-import { LoggingUtility } from '../LoggingUtility';
+import { LoggingUtility } from '../../utils/LoggingUtility';
 
 export class Migration001 implements Migration {
     version = 1;

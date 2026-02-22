@@ -1,5 +1,5 @@
 import { App, ProgressBarComponent } from 'obsidian';
-import { LoggingUtility } from './LoggingUtility';
+import { LoggingUtility } from '../utils/LoggingUtility';
 
 export class RAGProgressDialog {
 	private app: App;

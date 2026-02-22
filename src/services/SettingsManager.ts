@@ -1,6 +1,6 @@
 import { Plugin } from 'obsidian';
-import { LoggingUtility } from './LoggingUtility';
-import { ContextMode } from './main';
+import { LoggingUtility } from '../utils/LoggingUtility';
+import { ContextMode } from '../main';
 
 export interface LocalLLMSettings {
 	apiEndpoint: string;

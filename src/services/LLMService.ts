@@ -1,4 +1,4 @@
-import { LoggingUtility } from './LoggingUtility';
+import { LoggingUtility } from '../utils/LoggingUtility';
 import { requestUrl } from 'obsidian';
 
 export interface LLMConfig {
