@@ -611,19 +611,36 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.embeddingEndpoint = value;
 					await this.plugin.saveSettings();
+					this.loadAvailableEmbeddingModels();
 				}));
 
-		// Embedding model setting
-		new Setting(containerEl)
+		// Embedding model dropdown setting
+		const embeddingModelSetting = new Setting(containerEl)
 			.setName('Embedding model')
-			.setDesc('The model name to use for generating embeddings')
-			.addText(text => text
-				.setPlaceholder('text-embedding-ada-002')
-				.setValue(this.plugin.settings.embeddingModel)
-				.onChange(async (value) => {
+			.setDesc('Select a specific embedding model. (Loaded from LM Studio available models list.)')
+			.addDropdown(dropdown => {
+				const savedEmbeddingModel = this.plugin.settings.embeddingModel || DEFAULT_SETTINGS.embeddingModel;
+				dropdown.addOption(savedEmbeddingModel, savedEmbeddingModel);
+				dropdown.setValue(savedEmbeddingModel);
+
+				dropdown.onChange(async (value) => {
 					this.plugin.settings.embeddingModel = value;
 					await this.plugin.saveSettings();
-				}));
+				});
+
+				(this as any).embeddingModelDropdown = dropdown;
+			});
+
+		embeddingModelSetting.addButton(button => button
+			.setButtonText('Refresh Embedding Models')
+			.setTooltip('Load available embedding models from LM Studio')
+			.onClick(async () => {
+				await this.loadAvailableEmbeddingModels();
+			}));
+
+		setTimeout(() => {
+			this.loadAvailableEmbeddingModels();
+		}, 0);
 
 
 
@@ -815,7 +832,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			// Add available models
 			if (models.length > 0) {
 				models.forEach(model => {
-					if (!model.contains('text-embedding')) {
+					if (!model.toLowerCase().includes('embed')) {
 						dropdown.addOption(model, model);
 					}
 				});
@@ -848,6 +865,57 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 			// Show notice to user
 			new Notice('Failed to load models from LM Studio. Please check your API endpoint and ensure LM Studio is running.');
+		}
+	}
+
+	/**
+	 * Load available embedding models from the LM Studio model listing endpoints.
+	 * Falls back to the current default embedding model when no embedding models are returned.
+	 */
+	private async loadAvailableEmbeddingModels(): Promise<void> {
+		const dropdown = (this as any).embeddingModelDropdown;
+		if (!dropdown) return;
+
+		const currentOrDefaultModel = this.plugin.settings.embeddingModel || DEFAULT_SETTINGS.embeddingModel;
+
+		try {
+			dropdown.selectEl.disabled = true;
+			dropdown.selectEl.innerHTML = '<option value="">Loading embedding models...</option>';
+
+			const { createLLMService } = await import('./services/LLMService');
+			const llmService = createLLMService({
+				apiEndpoint: this.plugin.settings.embeddingEndpoint
+			});
+
+			const models = await llmService.getAvailableEmbeddingModels();
+
+			dropdown.selectEl.innerHTML = '';
+
+			if (models.length > 0) {
+				models.forEach(model => dropdown.addOption(model, model));
+
+				if (models.includes(currentOrDefaultModel)) {
+					dropdown.setValue(currentOrDefaultModel);
+				} else {
+					dropdown.setValue(models[0]);
+					this.plugin.settings.embeddingModel = models[0];
+					await this.plugin.saveSettings();
+				}
+			} else {
+				dropdown.addOption(currentOrDefaultModel, currentOrDefaultModel);
+				dropdown.setValue(currentOrDefaultModel);
+				this.plugin.settings.embeddingModel = currentOrDefaultModel;
+				await this.plugin.saveSettings();
+			}
+
+			dropdown.selectEl.disabled = false;
+		} catch (error) {
+			LoggingUtility.error('Failed to load available embedding models:', error);
+
+			dropdown.selectEl.innerHTML = '';
+			dropdown.addOption(currentOrDefaultModel, currentOrDefaultModel);
+			dropdown.setValue(currentOrDefaultModel);
+			dropdown.selectEl.disabled = false;
 		}
 	}
 

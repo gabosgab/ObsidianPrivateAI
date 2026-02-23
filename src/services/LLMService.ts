@@ -106,6 +106,17 @@ export interface ModelsResponse {
 	object: string;
 }
 
+export interface LMStudioRestModel {
+	type?: 'llm' | 'embedding';
+	key?: string;
+	id?: string;
+	display_name?: string;
+}
+
+export interface LMStudioRestModelsResponse {
+	models: LMStudioRestModel[];
+}
+
 export type StreamCallback = (chunk: string, isComplete: boolean) => void;
 
 export class LLMService {
@@ -454,29 +465,121 @@ export class LLMService {
 	// Method to get supported models (if the API supports it)
 	async getAvailableModels(): Promise<string[]> {
 		try {
-			const modelsEndpoint = this.config.apiEndpoint.replace('/chat/completions', '/models');
-			LoggingUtility.log('Fetching models from:', modelsEndpoint);
-
-			const headers: Record<string, string> = {
-				'Content-Type': 'application/json',
-			};
-
-			const response = await requestUrl({
-				url: modelsEndpoint,
-				method: 'GET',
-				headers
-			});
-
-			if (response.status >= 400) {
-				throw new Error(`Failed to fetch models: ${response.status}`);
-			}
-
-			const data = response.json as ModelsResponse;
-			return data.data?.map((model: ModelData) => model.id) || [];
+			const models = await this.fetchAvailableModels();
+			return models.map((model) => model.id);
 		} catch (error) {
 			LoggingUtility.error('Failed to fetch available models:', error);
 			return [];
 		}
+	}
+
+	async getAvailableEmbeddingModels(): Promise<string[]> {
+		try {
+			const models = await this.fetchAvailableModels();
+
+			return models
+				.filter(model => {
+					if (model.type === 'embedding') {
+						return true;
+					}
+
+					const id = model.id.toLowerCase();
+					return id.includes('embedding') || id.includes('embed');
+				})
+				.map(model => model.id);
+		} catch (error) {
+			LoggingUtility.error('Failed to fetch available embedding models:', error);
+			return [];
+		}
+	}
+
+	private async fetchAvailableModels(): Promise<Array<{ id: string; type?: 'llm' | 'embedding' }>> {
+		const endpoints = this.getModelListEndpoints();
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+		};
+
+		for (const endpoint of endpoints) {
+			try {
+				LoggingUtility.log('Fetching models from:', endpoint);
+				const response = await requestUrl({
+					url: endpoint,
+					method: 'GET',
+					headers
+				});
+
+				if (response.status >= 400) {
+					throw new Error(`Failed to fetch models: ${response.status}`);
+				}
+
+				const parsed = this.parseModelsResponse(response.json);
+				if (parsed.length > 0) {
+					return parsed;
+				}
+			} catch (error) {
+				LoggingUtility.warn(`Failed to fetch models from ${endpoint}:`, error);
+			}
+		}
+
+		throw new Error('Failed to fetch models from all known model endpoints');
+	}
+
+	private getModelListEndpoints(): string[] {
+		try {
+			const parsedUrl = new URL(this.config.apiEndpoint);
+			const pathLower = parsedUrl.pathname.toLowerCase();
+
+			const basePath =
+				pathLower.includes('/v1/')
+					? parsedUrl.pathname.substring(0, pathLower.indexOf('/v1/'))
+					: '';
+
+			return [
+				`${parsedUrl.origin}${basePath}/api/v1/models`,
+				`${parsedUrl.origin}${basePath}/v1/models`
+			];
+		} catch {
+			const fallbackBase = this.config.apiEndpoint
+				.replace('/chat/completions', '')
+				.replace('/embeddings', '')
+				.replace('/v1/models', '')
+				.replace('/api/v1/models', '');
+
+			return [
+				`${fallbackBase}/api/v1/models`,
+				`${fallbackBase}/v1/models`
+			];
+		}
+	}
+
+	private parseModelsResponse(payload: unknown): Array<{ id: string; type?: 'llm' | 'embedding' }> {
+		const modelMap = new Map<string, { id: string; type?: 'llm' | 'embedding' }>();
+		const dataPayload = payload as Partial<ModelsResponse>;
+		const lmStudioPayload = payload as Partial<LMStudioRestModelsResponse>;
+
+		if (Array.isArray(dataPayload.data)) {
+			dataPayload.data
+				.map(model => model?.id)
+				.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+				.forEach(id => {
+					modelMap.set(id, { id });
+				});
+		}
+
+		if (Array.isArray(lmStudioPayload.models)) {
+			lmStudioPayload.models
+				.map(model => ({
+					id: model?.key || model?.id || model?.display_name || '',
+					type: model?.type
+				}))
+				.forEach(model => {
+					if (typeof model.id === 'string' && model.id.trim().length > 0) {
+						modelMap.set(model.id, model);
+					}
+				});
+		}
+
+		return Array.from(modelMap.values());
 	}
 
 	// Method to validate configuration
