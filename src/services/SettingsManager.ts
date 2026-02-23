@@ -30,6 +30,11 @@ export interface LocalLLMSettings {
 	embeddingModel: string;
 	// Context notes visibility setting
 	contextNotesVisible: boolean;
+	// Review prompt tracking
+	usageTimeMs: number;
+	lastUsageStartTimestamp: number | null;
+	lastReviewPromptTimestamp: number | null;
+	reviewLinkClicked: boolean;
 }
 
 export const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -57,7 +62,12 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 	contextNotesVisible: false,
 	enableImageTextExtraction: true,
 	excludedFolders: [],
-	excludedFilePatterns: []
+	excludedFilePatterns: [],
+	// Review prompt defaults
+	usageTimeMs: 0,
+	lastUsageStartTimestamp: null,
+	lastReviewPromptTimestamp: null,
+	reviewLinkClicked: false
 };
 
 export class SettingsManager {

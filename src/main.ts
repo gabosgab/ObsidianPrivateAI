@@ -43,6 +43,11 @@ interface LocalLLMSettings {
 	excludedFilePatterns: string[];
 	// Context notes visibility setting
 	contextNotesVisible: boolean;
+	// Review prompt tracking
+	usageTimeMs: number;
+	lastUsageStartTimestamp: number | null;
+	lastReviewPromptTimestamp: number | null;
+	reviewLinkClicked: boolean;
 }
 
 const DEFAULT_SETTINGS: LocalLLMSettings = {
@@ -72,18 +77,31 @@ const DEFAULT_SETTINGS: LocalLLMSettings = {
 	excludedFolders: [],
 	excludedFilePatterns: [],
 	// Default context notes visibility
-	contextNotesVisible: false
+	contextNotesVisible: false,
+	// Review prompt defaults
+	usageTimeMs: 0,
+	lastUsageStartTimestamp: null,
+	lastReviewPromptTimestamp: null,
+	reviewLinkClicked: false
 };
+
+const REVIEW_PROMPT_THRESHOLD_MS = 60 * 60 * 1000;
+const REVIEW_PROMPT_REPEAT_MS = 24 * 60 * 60 * 1000;
+const REVIEW_PAGE_URL = 'https://www.obsidianstats.com/plugins/private-ai';
+const REVIEW_PROMPT_MESSAGE = 'Enjoying Private AI? A quick review helps others discover it';
 
 export default class LocalLLMPlugin extends Plugin {
 	settings: LocalLLMSettings;
 	ragService: RAGService;
 	private llmService: any; // LLMService instance for image processing
+	private usageTrackingIntervalId: number | null = null;
+	private reviewPromptPending = false;
 
 	async onload() {
 		LoggingUtility.initialize();
 
 		await this.loadSettings();
+		this.startUsageTracking();
 
 		// Set developer logging based on settings
 		LoggingUtility.setDeveloperLoggingEnabled(this.settings.enableDeveloperLogging);
@@ -169,6 +187,8 @@ export default class LocalLLMPlugin extends Plugin {
 	async onunload() {
 		LoggingUtility.log('Unloading Private AI Chat plugin');
 
+		await this.flushUsageTracking();
+
 		// Stop RAG file watcher and close database gracefully
 		if (this.ragService) {
 			await this.ragService.shutdown();
@@ -213,6 +233,104 @@ export default class LocalLLMPlugin extends Plugin {
 		this.notifyChatViewsOfSettingsChange();
 	}
 
+	private startUsageTracking() {
+		if (this.settings.lastUsageStartTimestamp === null) {
+			this.settings.lastUsageStartTimestamp = Date.now();
+		}
+
+		this.usageTrackingIntervalId = window.setInterval(() => {
+			void this.updateUsageAndMaybeShowReviewPrompt();
+		}, 60 * 1000);
+		this.registerInterval(this.usageTrackingIntervalId);
+
+		void this.updateUsageAndMaybeShowReviewPrompt();
+	}
+
+	private async updateUsageAndMaybeShowReviewPrompt() {
+		const now = Date.now();
+		const lastStart = this.settings.lastUsageStartTimestamp;
+
+		if (lastStart !== null && now > lastStart) {
+			this.settings.usageTimeMs += now - lastStart;
+		}
+
+		this.settings.lastUsageStartTimestamp = now;
+		await this.saveData(this.settings);
+
+		if (this.shouldShowReviewPrompt(now)) {
+			this.settings.lastReviewPromptTimestamp = now;
+			await this.saveData(this.settings);
+			this.showReviewPromptInChat();
+		}
+	}
+
+	private shouldShowReviewPrompt(now: number): boolean {
+		if (this.settings.reviewLinkClicked) {
+			return false;
+		}
+
+		if (this.settings.usageTimeMs < REVIEW_PROMPT_THRESHOLD_MS) {
+			return false;
+		}
+
+		if (this.settings.lastReviewPromptTimestamp === null) {
+			return true;
+		}
+
+		return now - this.settings.lastReviewPromptTimestamp >= REVIEW_PROMPT_REPEAT_MS;
+	}
+
+	private async flushUsageTracking() {
+		const now = Date.now();
+		const lastStart = this.settings.lastUsageStartTimestamp;
+
+		if (lastStart !== null && now > lastStart) {
+			this.settings.usageTimeMs += now - lastStart;
+		}
+
+		this.settings.lastUsageStartTimestamp = null;
+		await this.saveData(this.settings);
+	}
+
+	private showReviewPromptInChat() {
+		const injected = this.notifyChatViewsOfReviewPrompt();
+		if (injected) {
+			return;
+		}
+
+		// Queue for next chat view render and open the chat view for immediate visibility.
+		this.reviewPromptPending = true;
+		void this.activateView().then(() => {
+			const wasInjected = this.notifyChatViewsOfReviewPrompt();
+			if (wasInjected) {
+				this.reviewPromptPending = false;
+			}
+		});
+	}
+
+	openReviewPromptManually() {
+		this.showReviewPromptInChat();
+	}
+
+	async markReviewLinkClicked() {
+		if (this.settings.reviewLinkClicked) {
+			return;
+		}
+
+		this.settings.reviewLinkClicked = true;
+		this.reviewPromptPending = false;
+		await this.saveData(this.settings);
+	}
+
+	consumePendingReviewPrompt(chatView: ChatView) {
+		if (!this.reviewPromptPending) {
+			return;
+		}
+
+		chatView.showReviewPromptBanner(REVIEW_PROMPT_MESSAGE, REVIEW_PAGE_URL);
+		this.reviewPromptPending = false;
+	}
+
 	notifyChatViewsOfSettingsChange() {
 		// Get all open chat view leaves
 		this.app.workspace.iterateAllLeaves(leaf => {
@@ -248,6 +366,21 @@ export default class LocalLLMPlugin extends Plugin {
 				chatView.onRAGIndexingComplete();
 			}
 		});
+	}
+
+	private notifyChatViewsOfReviewPrompt(): boolean {
+		const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+		let injected = false;
+
+		leaves.forEach(leaf => {
+			const chatView = leaf.view as ChatView;
+			if (chatView && typeof chatView.showReviewPromptBanner === 'function') {
+				chatView.showReviewPromptBanner(REVIEW_PROMPT_MESSAGE, REVIEW_PAGE_URL);
+				injected = true;
+			}
+		});
+
+		return injected;
 	}
 
 	async activateView() {
@@ -728,6 +861,16 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl).setName('Support').setHeading();
+
+		new Setting(containerEl)
+			.setName('Review prompt')
+			.setDesc('Inject the review prompt into the chat window for testing.')
+			.addButton(button => button
+				.setButtonText('Show review prompt')
+				.setCta()
+				.onClick(() => {
+					this.plugin.openReviewPromptManually();
+				}));
 
 		// Add developer logging setting
 		new Setting(containerEl)

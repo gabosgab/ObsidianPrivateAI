@@ -39,6 +39,7 @@ interface DropdownComponentWithPrivateAPI extends DropdownComponent {
 export class ChatView extends ItemView {
 	private messages: ChatMessage[] = [];
 	private messageContainer: HTMLElement;
+	private reviewPromptBanner: HTMLElement;
 	private inputContainer: HTMLElement;
 	private inputElement: HTMLTextAreaElement;
 	private sendButton: HTMLButtonElement;
@@ -148,6 +149,11 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-messages'
 		});
 
+		// Create inline review prompt area (hidden by default).
+		this.reviewPromptBanner = chatContainer.createEl('div', {
+			cls: 'local-llm-review-prompt local-llm-review-prompt-hidden'
+		});
+
 		// Create input container (fixed at bottom)
 		this.inputContainer = chatContainer.createEl('div', {
 			cls: 'local-llm-input-container'
@@ -212,6 +218,9 @@ export class ChatView extends ItemView {
 
 		// Check and display initial RAG status
 		this.updateRAGStatus();
+		if (typeof this.plugin.consumePendingReviewPrompt === 'function') {
+			this.plugin.consumePendingReviewPrompt(this);
+		}
 	}
 
 	async onClose() {
@@ -253,6 +262,47 @@ export class ChatView extends ItemView {
 			temperature: config.temperature,
 			systemPrompt: config.systemPrompt,
 			model: config.model
+		});
+	}
+
+	showReviewPromptBanner(message: string, reviewUrl: string): void {
+		this.reviewPromptBanner.empty();
+		this.reviewPromptBanner.removeClass('local-llm-review-prompt-hidden');
+		this.reviewPromptBanner.addClass('local-llm-review-prompt-visible');
+
+		const textEl = this.reviewPromptBanner.createEl('span', {
+			cls: 'local-llm-review-prompt-text',
+			text: message
+		});
+		textEl.setAttribute('role', 'status');
+
+		const actionContainer = this.reviewPromptBanner.createEl('div', {
+			cls: 'local-llm-review-prompt-actions'
+		});
+
+		const reviewButton = actionContainer.createEl('button', {
+			text: 'Leave a review',
+			cls: 'mod-cta',
+			attr: { type: 'button' }
+		});
+		reviewButton.addEventListener('click', async () => {
+			if (typeof this.plugin.markReviewLinkClicked === 'function') {
+				await this.plugin.markReviewLinkClicked();
+			}
+			window.open(reviewUrl, '_blank');
+			this.reviewPromptBanner.empty();
+			this.reviewPromptBanner.removeClass('local-llm-review-prompt-visible');
+			this.reviewPromptBanner.addClass('local-llm-review-prompt-hidden');
+		});
+
+		const dismissButton = actionContainer.createEl('button', {
+			text: 'Dismiss',
+			attr: { type: 'button' }
+		});
+		dismissButton.addEventListener('click', () => {
+			this.reviewPromptBanner.empty();
+			this.reviewPromptBanner.removeClass('local-llm-review-prompt-visible');
+			this.reviewPromptBanner.addClass('local-llm-review-prompt-hidden');
 		});
 	}
 

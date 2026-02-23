@@ -34,6 +34,33 @@
   gap: 10px;
   min-height: 0;
 }
+.local-llm-review-prompt {
+  margin: 10px 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.local-llm-review-prompt-text {
+  font-size: 13px;
+  color: var(--text-normal);
+}
+.local-llm-review-prompt-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.local-llm-review-prompt-hidden {
+  display: none;
+}
+.local-llm-review-prompt-visible {
+  display: flex;
+}
 .local-llm-message {
   display: flex;
   flex-direction: column;
