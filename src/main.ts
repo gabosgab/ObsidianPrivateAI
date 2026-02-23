@@ -144,6 +144,24 @@ export default class LocalLLMPlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'resume-paused-rag-indexing',
+			name: 'Resume paused indexing',
+			callback: () => {
+				if (!this.ragService) {
+					new Notice('RAG service is not initialized yet.');
+					return;
+				}
+
+				const resumed = this.ragService.retryPausedIndexing();
+				if (resumed) {
+					new Notice('Retry requested. Indexing is resuming.');
+				} else {
+					new Notice('Indexing is not currently paused.');
+				}
+			}
+		});
+
 		// Add settings tab
 		this.addSettingTab(new LocalLLMSettingTab(this.app, this));
 	}

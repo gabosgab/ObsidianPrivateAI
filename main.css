@@ -910,8 +910,11 @@
   opacity: 0;
 }
 .local-llm-rag-status-visible {
-  max-height: 100px;
+  max-height: 120px;
   opacity: 1;
+}
+.local-llm-rag-status-visible.local-llm-rag-status-paused {
+  max-height: 180px;
 }
 .local-llm-rag-status-content {
   padding: 12px 16px;
@@ -943,6 +946,16 @@
 .local-llm-rag-progress-icon {
   font-size: 14px;
 }
+.local-llm-rag-paused-pill {
+  margin-left: auto;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-orange) 25%, transparent);
+  color: var(--text-normal);
+  border: 1px solid color-mix(in srgb, var(--color-orange) 50%, transparent);
+}
 .local-llm-rag-progress-details {
   margin-left: 22px;
 }
@@ -968,4 +981,16 @@
   font-size: 11px;
   color: var(--text-muted);
   text-align: right;
+}
+.local-llm-rag-progress-footer {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.local-llm-rag-retry-button {
+  font-size: 12px;
+  padding: 4px 10px;
+  line-height: 1.2;
 }

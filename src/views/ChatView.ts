@@ -861,6 +861,7 @@ Once your server is running, click the test connection button below.`;
 				<span class="local-llm-rag-stats-text">RAG Database: ${documentCount.toLocaleString()} paragraphs from ${fileCount.toLocaleString()} files available for context</span>
 			</div>
 		`;
+		this.ragStatusArea.removeClass('local-llm-rag-status-paused');
 		this.ragStatusArea.removeClass('local-llm-rag-status-hidden');
 		this.ragStatusArea.addClass('local-llm-rag-status-visible');
 	}
@@ -870,30 +871,65 @@ Once your server is running, click the test connection button below.`;
 	 */
 	showRAGProgress(current: number, total: number, message: string): void {
 		const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+		const isPaused = this.plugin.ragService.isIndexingPaused || message.toLowerCase().includes('indexing paused');
+		const pauseMessage = this.plugin.ragService.pauseMessage;
+		const resolvedMessage = isPaused && pauseMessage ? pauseMessage : message;
+		const progressMessage = total > 0 && !isPaused ? `${resolvedMessage} (${current}/${total})` : resolvedMessage;
+		const pauseCategory = this.plugin.ragService.pauseCategoryType;
+		const pauseLabel = pauseCategory === 'vision'
+			? 'Paused (Vision)'
+			: pauseCategory === 'embedding'
+				? 'Paused (Embeddings)'
+				: pauseCategory === 'connection'
+					? 'Paused (Connection)'
+					: 'Paused';
 
 		this.ragStatusContent.innerHTML = `
 			<div class="local-llm-rag-progress">
 				<div class="local-llm-rag-progress-header">
 					<span class="local-llm-rag-progress-icon">⚡</span>
 					<span class="local-llm-rag-progress-text">Indexing Notes</span>
+					${isPaused ? `<span class="local-llm-rag-paused-pill">${pauseLabel}</span>` : ''}
 				</div>
 				<div class="local-llm-rag-progress-details">
-					<div class="local-llm-rag-progress-message">${message} (${current}/${total})</div>
+					<div class="local-llm-rag-progress-message">${progressMessage}</div>
 					<div class="local-llm-rag-progress-bar-container">
 						<div class="local-llm-rag-progress-bar" style="width: ${percentage}%"></div>
 					</div>
-					<div class="local-llm-rag-progress-percentage">${percentage}%</div>
+					<div class="local-llm-rag-progress-footer">
+						<div class="local-llm-rag-progress-percentage">${percentage}%</div>
+						${isPaused ? '<button type="button" class="mod-cta local-llm-rag-retry-button">Retry Indexing</button>' : ''}
+					</div>
 				</div>
 			</div>
 		`;
+		if (isPaused) {
+			this.ragStatusArea.addClass('local-llm-rag-status-paused');
+		} else {
+			this.ragStatusArea.removeClass('local-llm-rag-status-paused');
+		}
 		this.ragStatusArea.removeClass('local-llm-rag-status-hidden');
 		this.ragStatusArea.addClass('local-llm-rag-status-visible');
+
+		if (isPaused) {
+			const retryButton = this.ragStatusContent.querySelector('.local-llm-rag-retry-button') as HTMLButtonElement | null;
+			retryButton?.addEventListener('click', () => {
+				const resumed = this.plugin.ragService.retryPausedIndexing();
+				if (resumed) {
+					retryButton.disabled = true;
+					retryButton.textContent = 'Retrying...';
+				} else {
+					new Notice('Indexing is not currently paused.');
+				}
+			});
+		}
 	}
 
 	/**
 	 * Hide RAG status area
 	 */
 	private hideRAGStatus(): void {
+		this.ragStatusArea.removeClass('local-llm-rag-status-paused');
 		this.ragStatusArea.removeClass('local-llm-rag-status-visible');
 		this.ragStatusArea.addClass('local-llm-rag-status-hidden');
 	}

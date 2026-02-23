@@ -41,6 +41,9 @@ export enum MaintenanceOperation {
 	UPDATE = 'update'
 }
 
+export type IndexingState = 'idle' | 'indexing' | 'paused' | 'cancelled';
+type PauseCategory = 'embedding' | 'vision' | 'connection' | 'unknown';
+
 export class RAGService {
 	private app: App;
 	private vectorDB: UnifiedVectorDatabase;
@@ -51,6 +54,13 @@ export class RAGService {
 	private fileDeleteRef?: EventRef;
 	private workspaceChangeRef?: EventRef;
 	private isIndexing: boolean = false;
+	private indexingState: IndexingState = 'idle';
+	private isPausedForEmbeddingRecovery: boolean = false;
+	private pausedEmbeddingReason: string = '';
+	private pausedCategory: PauseCategory = 'unknown';
+	private pausedMessage: string = '';
+	private pausedResumeResolver?: () => void;
+	private pendingManualRetry: boolean = false;
 	private indexingAbortController?: AbortController;
 	private progressCallback?: ProgressCallback;
 	private initOptions: RAGInitializationOptions;
@@ -62,6 +72,28 @@ export class RAGService {
 	private settings: LocalLLMSettings;
 	private imageProcessingEnabled: boolean = false;
 	private vaultRootPathNormalized: string = '';
+
+	private createEmptyStats(): {
+		documentCount: number;
+		fileCount: number;
+		lastUpdated: Date;
+		sizeInBytes: number;
+		markdownDocuments: number;
+		imageDocuments: number;
+		markdownFiles: number;
+		imageFiles: number;
+	} {
+		return {
+			documentCount: 0,
+			fileCount: 0,
+			lastUpdated: new Date(),
+			sizeInBytes: 0,
+			markdownDocuments: 0,
+			imageDocuments: 0,
+			markdownFiles: 0,
+			imageFiles: 0
+		};
+	}
 
 	constructor(app: App, manifest: PluginManifest, embeddingConfig: EmbeddingConfig, initOptions: RAGInitializationOptions = {}) {
 		this.app = app;
@@ -330,7 +362,7 @@ export class RAGService {
 						if (chunks.length > 0) {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
-							const embeddings = await this.embeddingService.generateEmbeddings(texts);
+							const embeddings = await this.generateEmbeddings(texts);
 							const checksum = await this.calculateCRC32(imageFile);
 
 							// Create chunk documents for the image
@@ -360,9 +392,15 @@ export class RAGService {
 
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
-					} else {
-						LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
-					}
+							} else {
+								const failureReason = result.error || 'No text found';
+								if (this.isIndexing && this.isRecoverableServiceFailure(failureReason)) {
+									await this.pauseForEmbeddingRecovery(failureReason);
+									i--;
+									continue;
+								}
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${failureReason}`);
+							}
 
 					// Yield control periodically
 					if (i % 3 === 0) {
@@ -395,6 +433,47 @@ export class RAGService {
 	 */
 	get isCurrentlyIndexing(): boolean {
 		return this.isIndexing;
+	}
+
+	get currentIndexingState(): IndexingState {
+		return this.indexingState;
+	}
+
+	/**
+	 * True when indexing is paused and waiting for embedding service recovery.
+	 */
+	get isIndexingPaused(): boolean {
+		return this.isPausedForEmbeddingRecovery;
+	}
+
+	get pauseMessage(): string {
+		return this.pausedMessage;
+	}
+
+	get pauseCategoryType(): PauseCategory {
+		return this.pausedCategory;
+	}
+
+	/**
+	 * Resume indexing after an embedding recovery pause.
+	 */
+	retryPausedIndexing(): boolean {
+		if (!this.isPausedForEmbeddingRecovery) {
+			return false;
+		}
+
+		if (this.pausedResumeResolver) {
+			const resolver = this.pausedResumeResolver;
+			this.pausedResumeResolver = undefined;
+			resolver();
+		} else {
+			this.pendingManualRetry = true;
+		}
+		LoggingUtility.log('Manual retry requested for paused indexing');
+		this.logIndexEvent('retry_button_click', {
+			category: this.pausedCategory
+		});
+		return true;
 	}
 
 	/**
@@ -782,7 +861,7 @@ export class RAGService {
 						if (chunks.length > 0) {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
-							const embeddings = await this.embeddingService.generateEmbeddings(texts);
+							const embeddings = await this.generateEmbeddings(texts);
 							const fileChecksum = await this.calculateCRC32(imageFile);
 
 							// Create chunk documents for the image
@@ -808,9 +887,15 @@ export class RAGService {
 
 							LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 						}
-					} else {
-						LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
-					}
+							} else {
+								const failureReason = result.error || 'No text found';
+								if (this.isIndexing && this.isRecoverableServiceFailure(failureReason)) {
+									await this.pauseForEmbeddingRecovery(failureReason);
+									i--;
+									continue;
+								}
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${failureReason}`);
+							}
 
 					// Yield control periodically
 					if (i % 5 === 0) {
@@ -1163,28 +1248,200 @@ export class RAGService {
 	 * Verify and wait for embedding service connection before proceeding
 	 */
 	private async ensureEmbeddingConnection(): Promise<void> {
-		const maxRetries = 10;
-		const retryDelay = 2000; // 2 seconds between retries
-
-		for (let attempt = 1; attempt <= maxRetries; attempt++) {
-			LoggingUtility.log(`Verifying embedding service connection (attempt ${attempt}/${maxRetries})...`);
-
+		while (true) {
 			const connectionTest = await this.testEmbeddingConnection();
-
 			if (connectionTest.success) {
+				this.clearEmbeddingPauseState();
 				LoggingUtility.log(`Embedding service connection verified successfully (${connectionTest.dimensions} dimensions)`);
 				return;
 			}
 
-			LoggingUtility.warn(`Connection attempt ${attempt} failed: ${connectionTest.error}`);
-
-			if (attempt === maxRetries) {
-				throw new Error(`Could not establish connection to LM Studio after ${maxRetries} attempts. Please ensure LM Studio is running and the embedding model is loaded. Last error: ${connectionTest.error}`);
+			const reason = connectionTest.error || 'Unknown embedding connection error';
+			if (!this.isIndexing) {
+				throw new Error(`Could not establish connection to LM Studio. ${reason}`);
 			}
 
-			// Wait before next retry
-			LoggingUtility.log(`Waiting ${retryDelay}ms before next connection attempt...`);
-			await new Promise(resolve => setTimeout(resolve, retryDelay));
+			await this.pauseForEmbeddingRecovery(reason);
+		}
+	}
+
+	private isEmbeddingRecoveryError(error: unknown): boolean {
+		const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+		return (
+			// EmbeddingService wraps most failures with these prefixes.
+			message.includes('failed to generate embedding') ||
+			message.includes('failed to generate embeddings') ||
+			message.includes('embedding api request failed') ||
+			message.includes('could not establish connection to lm studio') ||
+			message.includes('econnrefused') ||
+			message.includes('connection refused') ||
+			message.includes('network') ||
+			message.includes('fetch') ||
+			message.includes('socket') ||
+			message.includes('timeout') ||
+			message.includes('timed out') ||
+			message.includes('service unavailable') ||
+			message.includes('embedding api request failed: 500') ||
+			message.includes('embedding api request failed: 502') ||
+			message.includes('embedding api request failed: 503') ||
+			(message.includes('model') && (
+				message.includes('not loaded') ||
+				message.includes('not found') ||
+				message.includes('does not exist') ||
+				message.includes('unavailable')
+			))
+		);
+	}
+
+	private isRecoverableServiceFailure(reason?: string): boolean {
+		if (!reason) {
+			return false;
+		}
+
+		const message = reason.toLowerCase();
+		return (
+			this.isEmbeddingRecoveryError(message) ||
+			message.includes('connection error') ||
+			message.includes('local llm server is not running') ||
+			message.includes('request failed, status') ||
+			message.includes('status 400') ||
+			message.includes('status 401') ||
+			message.includes('status 403') ||
+			message.includes('status 429') ||
+			message.includes('status 500') ||
+			message.includes('status 502') ||
+			message.includes('status 503') ||
+			message.includes('status 504')
+		);
+	}
+
+	private categorizePauseReason(reason: string): PauseCategory {
+		const message = reason.toLowerCase();
+		if (message.includes('vision') || message.includes('image') || message.includes('extract')) {
+			return 'vision';
+		}
+		if (message.includes('embedding')) {
+			return 'embedding';
+		}
+		if (
+			message.includes('connection') ||
+			message.includes('server') ||
+			message.includes('status ')
+		) {
+			return 'connection';
+		}
+		return 'unknown';
+	}
+
+	private formatPauseMessage(category: PauseCategory): string {
+		if (category === 'vision') {
+			return 'Indexing paused: vision model/server is unavailable.';
+		}
+		if (category === 'embedding') {
+			return 'Indexing paused: embedding model/server is unavailable.';
+		}
+		if (category === 'connection') {
+			return 'Indexing paused: local model server connection failed.';
+		}
+		return 'Indexing paused: indexing service is unavailable.';
+	}
+
+	private logIndexEvent(event: string, details?: Record<string, unknown>): void {
+		if (details) {
+			LoggingUtility.log(`[index.${event}]`, details);
+		} else {
+			LoggingUtility.log(`[index.${event}]`);
+		}
+	}
+
+	private setIndexingState(state: IndexingState): void {
+		this.indexingState = state;
+	}
+
+	private setEmbeddingPauseState(reason: string): void {
+		this.isPausedForEmbeddingRecovery = true;
+		this.pausedEmbeddingReason = reason;
+		this.pausedCategory = this.categorizePauseReason(reason);
+		this.pausedMessage = this.formatPauseMessage(this.pausedCategory);
+		this.setIndexingState('paused');
+
+		const pauseMessage = this.pausedMessage;
+		if (this.progressCallback) {
+			this.progressCallback(0, 0, pauseMessage);
+		}
+		new Notice(pauseMessage, 10000);
+		this.logIndexEvent('pause', {
+			category: this.pausedCategory,
+			reason: this.pausedEmbeddingReason
+		});
+	}
+
+	private clearEmbeddingPauseState(): void {
+		this.isPausedForEmbeddingRecovery = false;
+		this.pausedEmbeddingReason = '';
+		this.pausedCategory = 'unknown';
+		this.pausedMessage = '';
+		this.pausedResumeResolver = undefined;
+		this.pendingManualRetry = false;
+	}
+
+	private async waitForRetrySignal(): Promise<void> {
+		if (this.pendingManualRetry) {
+			this.pendingManualRetry = false;
+			return;
+		}
+
+		await new Promise<void>((resolve) => {
+			this.pausedResumeResolver = resolve;
+		});
+	}
+
+	private async pauseForEmbeddingRecovery(reason: string): Promise<void> {
+		const category = this.categorizePauseReason(reason);
+		if (category !== 'vision') {
+			const autoRetryDelaysMs = [1000, 2000, 4000];
+			for (let attempt = 0; attempt < autoRetryDelaysMs.length; attempt++) {
+				if (this.indexingAbortController?.signal.aborted) {
+					throw new Error('Indexing aborted by user');
+				}
+
+				if (this.progressCallback) {
+					this.progressCallback(0, 0, `Connection issue detected, retrying automatically (${attempt + 1}/${autoRetryDelaysMs.length})...`);
+				}
+
+				await new Promise(resolve => setTimeout(resolve, autoRetryDelaysMs[attempt]));
+
+				const connectionTest = await this.testEmbeddingConnection();
+				if (connectionTest.success) {
+					this.logIndexEvent('auto_resume', {
+						attempt: attempt + 1,
+						dimensions: connectionTest.dimensions
+					});
+					return;
+				}
+			}
+		}
+
+		this.setEmbeddingPauseState(reason);
+		LoggingUtility.warn('Indexing paused waiting for embedding recovery:', reason);
+
+		while (this.isPausedForEmbeddingRecovery) {
+			if (this.indexingAbortController?.signal.aborted) {
+				throw new Error('Indexing aborted by user');
+			}
+
+			await this.waitForRetrySignal();
+
+			if (this.indexingAbortController?.signal.aborted) {
+				throw new Error('Indexing aborted by user');
+			}
+			this.logIndexEvent('retry_requested', {
+				category: this.pausedCategory
+			});
+			this.clearEmbeddingPauseState();
+			this.setIndexingState('indexing');
+			new Notice('Retry requested. Resuming indexing.', 4000);
+			return;
 		}
 	}
 
@@ -1198,6 +1455,7 @@ export class RAGService {
 		}
 
 		this.isIndexing = true;
+		this.setIndexingState('indexing');
 		this.progressCallback = progressCallback;
 
 		// Ensure we don't overwrite an existing controller if this is a nested call
@@ -1445,7 +1703,7 @@ export class RAGService {
 								if (chunks.length > 0) {
 									// Generate embeddings for chunks
 									const texts = chunks.map(c => c.text);
-									const embeddings = await this.embeddingService.generateEmbeddings(texts);
+									const embeddings = await this.generateEmbeddings(texts);
 
 									// Check abort after async operation
 									if (this.indexingAbortController?.signal.aborted) break;
@@ -1480,7 +1738,13 @@ export class RAGService {
 									LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 								}
 							} else {
-								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+								const failureReason = result.error || 'No text found';
+								if (this.isIndexing && this.isRecoverableServiceFailure(failureReason)) {
+									await this.pauseForEmbeddingRecovery(failureReason);
+									i--;
+									continue;
+								}
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${failureReason}`);
 							}
 
 							// Yield control periodically
@@ -1490,6 +1754,12 @@ export class RAGService {
 
 						} catch (error) {
 							LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+							if (this.isEmbeddingRecoveryError(error)) {
+								await this.pauseForEmbeddingRecovery(error instanceof Error ? error.message : String(error));
+								i--;
+								continue;
+							}
+							throw error;
 						}
 					}
 
@@ -1519,7 +1789,9 @@ export class RAGService {
 				new Notice('Error during RAG indexing: ' + error.message, 8000);
 			}
 		} finally {
+			this.clearEmbeddingPauseState();
 			this.isIndexing = false;
+			this.setIndexingState('idle');
 			this.progressCallback = undefined;
 			this.indexingAbortController = undefined;
 		}
@@ -1533,7 +1805,14 @@ export class RAGService {
 			this.indexingAbortController.abort();
 			this.indexingAbortController = undefined;
 		}
+		if (this.pausedResumeResolver) {
+			const resolver = this.pausedResumeResolver;
+			this.pausedResumeResolver = undefined;
+			resolver();
+		}
+		this.clearEmbeddingPauseState();
 		this.isIndexing = false;
+		this.setIndexingState('cancelled');
 	}
 
 	/**
@@ -1551,7 +1830,14 @@ export class RAGService {
 			this.indexingAbortController.abort();
 			this.indexingAbortController = undefined;
 		}
+		if (this.pausedResumeResolver) {
+			const resolver = this.pausedResumeResolver;
+			this.pausedResumeResolver = undefined;
+			resolver();
+		}
+		this.clearEmbeddingPauseState();
 		this.isIndexing = false;
+		this.setIndexingState('idle');
 
 		// 3. Clear any pending timeouts
 		for (const timeout of this.fileUpdateQueue.values()) {
@@ -1579,6 +1865,7 @@ export class RAGService {
 		}
 
 		this.isIndexing = true;
+		this.setIndexingState('indexing');
 		this.progressCallback = progressCallback;
 
 		// Ensure we don't overwrite an existing controller if this is a nested call (shouldn't happen with isIndexing check, but safe)
@@ -1731,7 +2018,7 @@ export class RAGService {
 								if (chunks.length > 0) {
 									// Generate embeddings for chunks
 									const texts = chunks.map(c => c.text);
-									const embeddings = await this.embeddingService.generateEmbeddings(texts);
+									const embeddings = await this.generateEmbeddings(texts);
 
 									if (this.indexingAbortController?.signal.aborted) break;
 
@@ -1762,7 +2049,13 @@ export class RAGService {
 									LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 								}
 							} else {
-								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+								const failureReason = result.error || 'No text found';
+								if (this.isIndexing && this.isRecoverableServiceFailure(failureReason)) {
+									await this.pauseForEmbeddingRecovery(failureReason);
+									i--;
+									continue;
+								}
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${failureReason}`);
 							}
 
 							// Yield control periodically
@@ -1772,6 +2065,12 @@ export class RAGService {
 
 						} catch (error) {
 							LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+							if (this.isEmbeddingRecoveryError(error)) {
+								await this.pauseForEmbeddingRecovery(error instanceof Error ? error.message : String(error));
+								i--;
+								continue;
+							}
+							throw error;
 						}
 					}
 
@@ -1798,7 +2097,9 @@ export class RAGService {
 				new Notice('Error during RAG complete rebuild: ' + error.message, 8000);
 			}
 		} finally {
+			this.clearEmbeddingPauseState();
 			this.isIndexing = false;
+			this.setIndexingState('idle');
 			this.progressCallback = undefined;
 			this.indexingAbortController = undefined;
 		}
@@ -1814,6 +2115,7 @@ export class RAGService {
 		}
 
 		this.isIndexing = true;
+		this.setIndexingState('indexing');
 		this.progressCallback = progressCallback;
 		this.indexingAbortController = new AbortController();
 
@@ -1965,7 +2267,7 @@ export class RAGService {
 								if (chunks.length > 0) {
 									// Generate embeddings for chunks
 									const texts = chunks.map(c => c.text);
-									const embeddings = await this.embeddingService.generateEmbeddings(texts);
+									const embeddings = await this.generateEmbeddings(texts);
 									const checksum = await this.calculateCRC32(imageFile);
 
 									// Create chunk documents for the image
@@ -1993,7 +2295,13 @@ export class RAGService {
 									LoggingUtility.log(`Successfully processed image ${imageFile.path} with ${chunks.length} text chunks`);
 								}
 							} else {
-								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${result.error || 'No text found'}`);
+								const failureReason = result.error || 'No text found';
+								if (this.isIndexing && this.isRecoverableServiceFailure(failureReason)) {
+									await this.pauseForEmbeddingRecovery(failureReason);
+									i--;
+									continue;
+								}
+								LoggingUtility.log(`No text extracted from image ${imageFile.path}: ${failureReason}`);
 							}
 
 							// Yield control periodically
@@ -2003,6 +2311,12 @@ export class RAGService {
 
 						} catch (error) {
 							LoggingUtility.error(`Error processing image ${imageFile.path}:`, error);
+							if (this.isEmbeddingRecoveryError(error)) {
+								await this.pauseForEmbeddingRecovery(error instanceof Error ? error.message : String(error));
+								i--;
+								continue;
+							}
+							throw error;
 						}
 					}
 
@@ -2029,7 +2343,9 @@ export class RAGService {
 				new Notice('Error during RAG complete rebuild: ' + error.message, 8000);
 			}
 		} finally {
+			this.clearEmbeddingPauseState();
 			this.isIndexing = false;
+			this.setIndexingState('idle');
 			this.progressCallback = undefined;
 			this.indexingAbortController = undefined;
 		}
@@ -2039,20 +2355,41 @@ export class RAGService {
 	 * Generate embedding using the embedding service
 	 */
 	private async generateEmbedding(text: string): Promise<number[]> {
-		try {
-			// Clean up the text before sending to embedding service
-			const cleanText = text.replace(/\s+/g, ' ').trim();
+		// Clean up the text before sending to embedding service
+		const cleanText = text.replace(/\s+/g, ' ').trim();
 
-			// Truncate if too long (most embedding models have token limits)
-			const maxLength = 8000; // Conservative limit
-			const truncatedText = cleanText.length > maxLength
-				? cleanText.substring(0, maxLength) + '...'
-				: cleanText;
+		// Truncate if too long (most embedding models have token limits)
+		const maxLength = 8000; // Conservative limit
+		const truncatedText = cleanText.length > maxLength
+			? cleanText.substring(0, maxLength) + '...'
+			: cleanText;
 
-			return await this.embeddingService.generateEmbedding(truncatedText);
-		} catch (error) {
-			LoggingUtility.error('Error generating embedding:', error);
-			throw error;
+		while (true) {
+			try {
+				return await this.embeddingService.generateEmbedding(truncatedText);
+			} catch (error) {
+				LoggingUtility.error('Error generating embedding:', error);
+				if (this.isIndexing) {
+					await this.pauseForEmbeddingRecovery(error instanceof Error ? error.message : String(error));
+					continue;
+				}
+				throw error;
+			}
+		}
+	}
+
+	private async generateEmbeddings(texts: string[]): Promise<number[][]> {
+		while (true) {
+			try {
+				return await this.embeddingService.generateEmbeddings(texts);
+			} catch (error) {
+				LoggingUtility.error('Error generating embeddings:', error);
+				if (this.isIndexing) {
+					await this.pauseForEmbeddingRecovery(error instanceof Error ? error.message : String(error));
+					continue;
+				}
+				throw error;
+			}
 		}
 	}
 
@@ -2081,7 +2418,7 @@ export class RAGService {
 
 			// Generate embeddings for all chunks
 			const texts = chunks.map(c => c.text);
-			const embeddings = await this.embeddingService.generateEmbeddings(texts);
+			const embeddings = await this.generateEmbeddings(texts);
 
 			// Yield control after embedding generation
 			await new Promise(resolve => setTimeout(resolve, 0));
@@ -2110,6 +2447,7 @@ export class RAGService {
 
 		} catch (error) {
 			LoggingUtility.error(`Error updating embeddings for ${file.path}:`, error);
+			throw error;
 		}
 	}
 
@@ -2184,6 +2522,7 @@ export class RAGService {
 
 		} catch (error) {
 			LoggingUtility.error(`Error updating embeddings for ${file.path}:`, error);
+			throw error;
 		}
 	}
 
@@ -2330,24 +2669,25 @@ export class RAGService {
 		markdownFiles: number;
 		imageFiles: number;
 	} {
-		const stats = this.vectorDB.getStats();
+		const db = (this.vectorDB as any)?.db;
+		if (!db) {
+			return this.createEmptyStats();
+		}
+
+		let stats: { documentCount: number; fileCount: number; lastUpdated: Date; sizeInBytes: number };
+		try {
+			stats = this.vectorDB.getStats();
+		} catch (error) {
+			LoggingUtility.warn('RAG stats requested before database was ready:', error);
+			return this.createEmptyStats();
+		}
 
 		// Get breakdown by source type
 		if (!this.vectorDB) {
-			return {
-				documentCount: 0,
-				fileCount: 0,
-				lastUpdated: new Date(),
-				sizeInBytes: 0,
-				markdownDocuments: 0,
-				imageDocuments: 0,
-				markdownFiles: 0,
-				imageFiles: 0
-			};
+			return this.createEmptyStats();
 		}
 
 		// Get counts by source type from database
-		const db = (this.vectorDB as any).db;
 		if (!db) {
 			return {
 				documentCount: stats.documentCount,
@@ -2382,7 +2722,7 @@ export class RAGService {
 	 * Check if index is empty
 	 */
 	isIndexEmpty(): boolean {
-		const stats = this.vectorDB.getStats();
+		const stats = this.getStats();
 		return stats.documentCount === 0;
 	}
 
@@ -2428,6 +2768,7 @@ export class RAGService {
 		totalFiles: number;
 	} {
 		const stats = this.getStats();
+		const isInitialized = !!(this.vectorDB as any)?.db;
 
 		// Get breakdown by source type
 		const db = (this.vectorDB as any).db;
@@ -2456,7 +2797,7 @@ export class RAGService {
 		}
 
 		return {
-			isInitialized: true,
+			isInitialized,
 			isIndexing: this.isIndexing,
 			textStats,
 			imageStats,
