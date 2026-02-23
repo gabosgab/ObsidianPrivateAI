@@ -36,8 +36,8 @@ execSync('git push origin HEAD:main', { stdio: 'inherit' });
 execSync('git push --tags', { stdio: 'inherit' });
 
 // Wait 30 seconds
-console.log('Waiting 30 seconds for GitHub action to create the release...');
-await new Promise(resolve => setTimeout(resolve, 30000));
+console.log('Waiting 60 seconds for GitHub action to create the release...');
+await new Promise(resolve => setTimeout(resolve, 60000));
 
 // Open releases page in browser
 const releaseUrl = 'https://github.com/gabosgab/ObsidianPrivateAI/releases';
