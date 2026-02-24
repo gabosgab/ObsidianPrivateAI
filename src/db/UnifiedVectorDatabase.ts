@@ -65,7 +65,7 @@ export class UnifiedVectorDatabase {
 			if (fs.existsSync(this.dbPath)) {
 				dbFile = fs.readFileSync(this.dbPath);
 			}
-			this.db = new SQL.Database(dbFile);
+			this.db = new SQL.Database([dbFile]);
 
 			// Enable WAL mode for better concurrency - sql.js might not support this as it's in-memory/file-backed, but we can try
 			// Note: sql.js is usually synchronous and in-memory, requiring explicit save.
@@ -587,7 +587,7 @@ export class UnifiedVectorDatabase {
 	async save(): Promise<void> {
 		if (this.db) {
 			const data = this.db.export();
-			const buffer = Buffer.from(data);
+			const buffer = Buffer.from([data]);
 			fs.writeFileSync(this.dbPath, buffer);
 		}
 	}
