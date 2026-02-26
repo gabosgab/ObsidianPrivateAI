@@ -1,6 +1,6 @@
 # Private AI Chat for Obsidian
 
-Effortlessly chat with your notes using a privacy first LLM.  Private by design, your notes never leave the device and use local processing only.
+Your most sensitive notes, your private thoughts — other AI plugins send them to someone's servers. Private AI doesn't.
 
 * ✅ Your notes stay on your device
 * ✅ Use local LLMs like gpt-oss, Qwen3, Gemma3, DeepSeek and many more, locally on your own hardware
