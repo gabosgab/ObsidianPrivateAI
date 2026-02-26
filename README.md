@@ -3,11 +3,11 @@
 Effortlessly chat with your notes using a privacy first LLM.  Private by design, your notes never leave the device and use local processing only.
 
 * ✅ Your notes stay on your device
-* ✅ LLM processing happens on your local LM Studio server
+* ✅ Use local LLMs like gpt-oss, Qwen3, Gemma3, DeepSeek and many more, locally on your own hardware
 * ✅ No data is transmitted to external services
 * ✅ No analytics or tracking
 
-![Private AI Example Use Case](img/ObsidianExample.gif)
+Compatible With: [LM Studio](https://lmstudio.ai/)
 
 ## Getting Started + Setup
 
