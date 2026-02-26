@@ -3,7 +3,7 @@
 Your most sensitive notes, your private thoughts — other AI plugins send them to someone's servers. Private AI doesn't.
 
 * ✅ Your notes stay on your device
-* ✅ Use local LLMs like gpt-oss, Qwen3, Gemma3, DeepSeek and many more, locally on your own hardware
+* ✅ Use local LLMs like gpt-oss, Qwen3, Gemma3, DeepSeek, Mistral and many more, locally on your own hardware
 * ✅ No data is transmitted to external services
 * ✅ No analytics or tracking
 
