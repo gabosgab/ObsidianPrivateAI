@@ -36,4 +36,33 @@ describe('LLMService request contract', () => {
     const payload = JSON.parse(global.__requestUrlMock.mock.calls[0][0].body);
     expect(payload.model).toBe('gemma-test');
   });
+
+  it('adds bearer authorization header when api key is configured', async () => {
+    global.__requestUrlMock.mockResolvedValue({
+      status: 200,
+      headers: {},
+      text: '',
+      json: {
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'ok'
+            },
+            finish_reason: 'stop'
+          }
+        ]
+      }
+    });
+
+    const service = new LLMService({
+      apiEndpoint: 'http://localhost:1234/v1/chat/completions',
+      apiKey: 'secret-key'
+    });
+
+    await service.sendMessage('hello');
+
+    const requestArgs = global.__requestUrlMock.mock.calls[0][0];
+    expect(requestArgs.headers.Authorization).toBe('Bearer secret-key');
+  });
 });

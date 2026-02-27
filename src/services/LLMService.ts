@@ -7,6 +7,7 @@ export interface LLMConfig {
 	temperature?: number;
 	systemPrompt?: string;
 	model?: string;
+	apiKey?: string;
 }
 
 // Centralized error message function
@@ -124,6 +125,18 @@ export class LLMService {
 
 	constructor(config: LLMConfig) {
 		this.config = config;
+	}
+
+	private buildHeaders(): Record<string, string> {
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+		};
+
+		if (this.config.apiKey && this.config.apiKey.trim().length > 0) {
+			headers.Authorization = `Bearer ${this.config.apiKey.trim()}`;
+		}
+
+		return headers;
 	}
 
 	async sendMessage(message: string, conversationHistory: ChatMessage[] = []): Promise<string> {
@@ -254,9 +267,7 @@ export class LLMService {
 	}
 
 	private async makeAPIRequest(request: ChatRequest): Promise<ChatResponse> {
-		const headers: Record<string, string> = {
-			'Content-Type': 'application/json',
-		};
+		const headers = this.buildHeaders();
 
 		LoggingUtility.log('Making API request to:', this.config.apiEndpoint);
 		LoggingUtility.log('Headers:', headers);
@@ -298,9 +309,7 @@ export class LLMService {
 				throw new Error('Streaming is not supported in this environment');
 			}
 
-			const headers: Record<string, string> = {
-				'Content-Type': 'application/json',
-			};
+			const headers = this.buildHeaders();
 
 			const response = await fetch(this.config.apiEndpoint, {
 				method: 'POST',
@@ -495,9 +504,7 @@ export class LLMService {
 
 	private async fetchAvailableModels(): Promise<Array<{ id: string; type?: 'llm' | 'embedding' }>> {
 		const endpoints = this.getModelListEndpoints();
-		const headers: Record<string, string> = {
-			'Content-Type': 'application/json',
-		};
+		const headers = this.buildHeaders();
 
 		for (const endpoint of endpoints) {
 			try {

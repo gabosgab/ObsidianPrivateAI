@@ -21,6 +21,8 @@ interface LocalLLMSettings {
 	systemPrompt: string;
 	// Model setting (optional - if not set, no model will be sent in payload)
 	model?: string;
+	// API key (optional) - if specified, used as a Bearer token (works with LM Studio)
+	apiKey?: string;
 	// Search settings
 	searchMaxResults: number;
 	searchContextPercentage: number;
@@ -110,6 +112,7 @@ export default class LocalLLMPlugin extends Plugin {
 		const { createLLMService } = await import('./services/LLMService');
 		this.llmService = createLLMService({
 			apiEndpoint: this.settings.apiEndpoint,
+			apiKey: this.settings.apiKey,
 			maxTokens: this.settings.maxTokens,
 			temperature: this.settings.temperature,
 			systemPrompt: this.settings.systemPrompt
@@ -118,7 +121,8 @@ export default class LocalLLMPlugin extends Plugin {
 		// Initialize RAG service (always enabled with auto-maintenance)
 		this.ragService = new RAGService(this.app, this.manifest, {
 			endpoint: this.settings.embeddingEndpoint,
-			model: this.settings.embeddingModel
+			model: this.settings.embeddingModel,
+			apiKey: this.settings.apiKey
 		}, {
 			autoMaintenance: true,
 			backgroundIndexing: true,
@@ -210,6 +214,7 @@ export default class LocalLLMPlugin extends Plugin {
 			const { createLLMService } = await import('./services/LLMService');
 			this.llmService = createLLMService({
 				apiEndpoint: this.settings.apiEndpoint,
+				apiKey: this.settings.apiKey,
 				maxTokens: this.settings.maxTokens,
 				temperature: this.settings.temperature,
 				systemPrompt: this.settings.systemPrompt
@@ -225,7 +230,8 @@ export default class LocalLLMPlugin extends Plugin {
 		if (this.ragService) {
 			this.ragService.updateEmbeddingConfig({
 				endpoint: this.settings.embeddingEndpoint,
-				model: this.settings.embeddingModel
+				model: this.settings.embeddingModel,
+				apiKey: this.settings.apiKey
 			});
 		}
 
@@ -472,6 +478,18 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.apiEndpoint)
 				.onChange(async (value) => {
 					this.plugin.settings.apiEndpoint = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('API key')
+			.setDesc('Optional API key sent as a Bearer token for API authentication')
+			.addText(text => text
+				.setPlaceholder('Enter API key')
+				.setValue(this.plugin.settings.apiKey ?? '')
+				.onChange(async (value) => {
+					const trimmedValue = value.trim();
+					this.plugin.settings.apiKey = trimmedValue.length > 0 ? trimmedValue : undefined;
 					await this.plugin.saveSettings();
 				}));
 
@@ -792,7 +810,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						// Update the embedding service config with current settings
 						this.plugin.ragService.updateEmbeddingConfig({
 							endpoint: this.plugin.settings.embeddingEndpoint,
-							model: this.plugin.settings.embeddingModel
+							model: this.plugin.settings.embeddingModel,
+							apiKey: this.plugin.settings.apiKey
 						});
 
 						// Test the connection
@@ -898,6 +917,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				const { createLLMService } = await import('./services/LLMService');
 				const llmService = createLLMService({
 					apiEndpoint: this.plugin.settings.apiEndpoint,
+					apiKey: this.plugin.settings.apiKey,
 					maxTokens: this.plugin.settings.maxTokens,
 					temperature: this.plugin.settings.temperature,
 					systemPrompt: this.plugin.settings.systemPrompt,
@@ -962,7 +982,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			// Create a temporary LLM service to fetch models
 			const { createLLMService } = await import('./services/LLMService');
 			const llmService = createLLMService({
-				apiEndpoint: this.plugin.settings.apiEndpoint
+					apiEndpoint: this.plugin.settings.apiEndpoint,
+					apiKey: this.plugin.settings.apiKey
 			});
 
 			// Fetch available models
@@ -1027,7 +1048,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 			const { createLLMService } = await import('./services/LLMService');
 			const llmService = createLLMService({
-				apiEndpoint: this.plugin.settings.embeddingEndpoint
+				apiEndpoint: this.plugin.settings.embeddingEndpoint,
+				apiKey: this.plugin.settings.apiKey
 			});
 
 			const models = await llmService.getAvailableEmbeddingModels();

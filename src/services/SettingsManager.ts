@@ -10,6 +10,8 @@ export interface LocalLLMSettings {
 	systemPrompt: string;
 	// Model setting (optional - if not set, no model will be sent in payload)
 	model?: string;
+	// API key (optional) - if specified, used as a Bearer token (works with LM Studio)
+	apiKey?: string;
 	// Search settings
 	searchMaxResults: number;
 	searchContextPercentage: number;
