@@ -483,7 +483,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('API key')
-			.setDesc('Optional API key sent as a Bearer token for API authentication')
+			.setDesc('Optional API key sent as a Bearer token for API authentication.  To generate, goto LM Studio, click Developer tab, Server Settings, and click Manage Tokens')
 			.addText(text => text
 				.setPlaceholder('Enter API key')
 				.setValue(this.plugin.settings.apiKey ?? '')
@@ -983,8 +983,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			// Create a temporary LLM service to fetch models
 			const { createLLMService } = await import('./services/LLMService');
 			const llmService = createLLMService({
-					apiEndpoint: this.plugin.settings.apiEndpoint,
-					apiKey: this.plugin.settings.apiKey
+				apiEndpoint: this.plugin.settings.apiEndpoint,
+				apiKey: this.plugin.settings.apiKey
 			});
 
 			// Fetch available models
