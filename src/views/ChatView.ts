@@ -905,12 +905,14 @@ Once your server is running, click the test connection button below.`;
 	 * Show RAG database statistics
 	 */
 	private showRAGStats(documentCount: number, fileCount: number): void {
-		this.ragStatusContent.innerHTML = `
-			<div class="local-llm-rag-stats">
-				<span class="local-llm-rag-stats-icon">📚</span>
-				<span class="local-llm-rag-stats-text">RAG Database: ${documentCount.toLocaleString()} paragraphs from ${fileCount.toLocaleString()} files available for context</span>
-			</div>
-		`;
+		this.ragStatusContent.empty();
+		const statsEl = this.ragStatusContent.createEl('div', { cls: 'local-llm-rag-stats' });
+		statsEl.createEl('span', { cls: 'local-llm-rag-stats-icon', text: '📚' });
+		statsEl.createEl('span', {
+			cls: 'local-llm-rag-stats-text',
+			text: `RAG Database: ${documentCount.toLocaleString()} paragraphs from ${fileCount.toLocaleString()} files available for context`
+		});
+
 		this.ragStatusArea.removeClass('local-llm-rag-status-paused');
 		this.ragStatusArea.removeClass('local-llm-rag-status-hidden');
 		this.ragStatusArea.addClass('local-llm-rag-status-visible');
@@ -934,25 +936,35 @@ Once your server is running, click the test connection button below.`;
 					? 'Paused (Connection)'
 					: 'Paused';
 
-		this.ragStatusContent.innerHTML = `
-			<div class="local-llm-rag-progress">
-				<div class="local-llm-rag-progress-header">
-					<span class="local-llm-rag-progress-icon">⚡</span>
-					<span class="local-llm-rag-progress-text">Indexing Notes</span>
-					${isPaused ? `<span class="local-llm-rag-paused-pill">${pauseLabel}</span>` : ''}
-				</div>
-				<div class="local-llm-rag-progress-details">
-					<div class="local-llm-rag-progress-message">${progressMessage}</div>
-					<div class="local-llm-rag-progress-bar-container">
-						<div class="local-llm-rag-progress-bar" style="width: ${percentage}%"></div>
-					</div>
-					<div class="local-llm-rag-progress-footer">
-						<div class="local-llm-rag-progress-percentage">${percentage}%</div>
-						${isPaused ? '<button type="button" class="mod-cta local-llm-rag-retry-button">Retry Indexing</button>' : ''}
-					</div>
-				</div>
-			</div>
-		`;
+		this.ragStatusContent.empty();
+		const progressContainer = this.ragStatusContent.createEl('div', { cls: 'local-llm-rag-progress' });
+
+		const headerEl = progressContainer.createEl('div', { cls: 'local-llm-rag-progress-header' });
+		headerEl.createEl('span', { cls: 'local-llm-rag-progress-icon', text: '⚡' });
+		headerEl.createEl('span', { cls: 'local-llm-rag-progress-text', text: 'Indexing Notes' });
+		if (isPaused) {
+			headerEl.createEl('span', { cls: 'local-llm-rag-paused-pill', text: pauseLabel });
+		}
+
+		const detailsEl = progressContainer.createEl('div', { cls: 'local-llm-rag-progress-details' });
+		detailsEl.createEl('div', { cls: 'local-llm-rag-progress-message', text: progressMessage });
+
+		const barContainer = detailsEl.createEl('div', { cls: 'local-llm-rag-progress-bar-container' });
+		barContainer.createEl('div', {
+			cls: 'local-llm-rag-progress-bar',
+			attr: { style: `width: ${percentage}%` }
+		});
+
+		const footerEl = detailsEl.createEl('div', { cls: 'local-llm-rag-progress-footer' });
+		footerEl.createEl('div', { cls: 'local-llm-rag-progress-percentage', text: `${percentage}%` });
+		if (isPaused) {
+			footerEl.createEl('button', {
+				cls: 'mod-cta local-llm-rag-retry-button',
+				text: 'Retry Indexing',
+				attr: { type: 'button' }
+			});
+		}
+
 		if (isPaused) {
 			this.ragStatusArea.addClass('local-llm-rag-status-paused');
 		} else {
