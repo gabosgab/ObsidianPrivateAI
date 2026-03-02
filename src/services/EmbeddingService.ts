@@ -21,6 +21,7 @@ interface EmbeddingResponse {
 export interface EmbeddingConfig {
 	endpoint: string;
 	model: string;
+	apiKey?: string;
 }
 
 export class EmbeddingService {
@@ -28,6 +29,18 @@ export class EmbeddingService {
 
 	constructor(config: EmbeddingConfig) {
 		this.config = config;
+	}
+
+	private buildHeaders(): Record<string, string> {
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+		};
+
+		if (this.config.apiKey && this.config.apiKey.trim().length > 0) {
+			headers.Authorization = `Bearer ${this.config.apiKey.trim()}`;
+		}
+
+		return headers;
 	}
 
 	/**
@@ -45,9 +58,7 @@ export class EmbeddingService {
 			const response = await requestUrl({
 				url: this.config.endpoint,
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
+				headers: this.buildHeaders(),
 				body: JSON.stringify(request)
 			});
 
@@ -89,9 +100,7 @@ export class EmbeddingService {
 			const response = await requestUrl({
 				url: this.config.endpoint,
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
+				headers: this.buildHeaders(),
 				body: JSON.stringify(request)
 			});
 
