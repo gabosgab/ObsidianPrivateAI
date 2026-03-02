@@ -957,7 +957,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			// Show loading state
 			const savedModel = this.plugin.settings.model || '';
 			dropdown.selectEl.disabled = true;
-			dropdown.selectEl.innerHTML = '<option value="">Loading models...</option>';
+			dropdown.selectEl.empty();
+			dropdown.selectEl.createEl('option', { value: '', text: 'Loading models...' });
 
 			// Create a temporary LLM service to fetch models
 			const { createLLMService } = await import('./services/LLMService');
@@ -969,7 +970,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			const models = await llmService.getAvailableModels();
 
 			// Clear dropdown and add default option
-			dropdown.selectEl.innerHTML = '';
+			dropdown.selectEl.empty();
 			dropdown.addOption('', 'Auto (server chooses)');
 
 			// Add available models
@@ -997,7 +998,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			LoggingUtility.error('Failed to load available models:', error);
 
 			// Show error state
-			dropdown.selectEl.innerHTML = '';
+			dropdown.selectEl.empty();
 			dropdown.addOption('', 'Auto (server chooses)');
 			dropdown.addOption('', 'Failed to load models');
 
@@ -1023,7 +1024,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		try {
 			dropdown.selectEl.disabled = true;
-			dropdown.selectEl.innerHTML = '<option value="">Loading embedding models...</option>';
+			dropdown.selectEl.empty();
+			dropdown.selectEl.createEl('option', { value: '', text: 'Loading embedding models...' });
 
 			const { createLLMService } = await import('./services/LLMService');
 			const llmService = createLLMService({
@@ -1032,7 +1034,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 			const models = await llmService.getAvailableEmbeddingModels();
 
-			dropdown.selectEl.innerHTML = '';
+			dropdown.selectEl.empty();
 
 			if (models.length > 0) {
 				models.forEach(model => dropdown.addOption(model, model));
@@ -1055,7 +1057,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		} catch (error) {
 			LoggingUtility.error('Failed to load available embedding models:', error);
 
-			dropdown.selectEl.innerHTML = '';
+			dropdown.selectEl.empty();
 			dropdown.addOption(currentOrDefaultModel, currentOrDefaultModel);
 			dropdown.setValue(currentOrDefaultModel);
 			dropdown.selectEl.disabled = false;
