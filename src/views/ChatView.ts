@@ -13,6 +13,14 @@ interface ChatMessage {
 	timestamp: Date;
 	isStreaming?: boolean;
 	usedNotes?: SearchResult[];
+	thinkingBlocks?: string[];
+}
+
+interface StreamingThinkingState {
+	inThinkBlock: boolean;
+	buffer: string;
+	blocks: string[];
+	rawTranscript: string;
 }
 
 interface LLMConfig {
@@ -54,6 +62,9 @@ export class ChatView extends ItemView {
 	private currentAbortController: AbortController | null = null;
 	private contextMode: ContextMode = ContextMode.OPEN_NOTES;
 	private plugin: LocalLLMPlugin;
+	private streamingThinkingState = new Map<string, StreamingThinkingState>();
+	private streamingRenderInFlight = new Set<string>();
+	private pendingStreamingRender = new Map<string, ChatMessage>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalLLMPlugin) {
 		super(leaf);
@@ -498,43 +509,63 @@ export class ChatView extends ItemView {
 
 	private async updateStreamingMessage(messageId: string, chunk: string) {
 		const message = this.messages.find(m => m.id === messageId);
-		if (message) {
-			message.content += chunk;
-			// Update the content directly instead of re-rendering
-			await this.updateStreamingContent(messageId, message.content);
+		if (!message) {
+			return;
 		}
+
+		const state = this.getOrCreateStreamingThinkingState(messageId);
+		const normalizedChunk = this.normalizeStreamingChunk(state, chunk);
+		if (!normalizedChunk) {
+			return;
+		}
+
+		const assistantDelta = this.extractAssistantContentFromChunk(state, normalizedChunk);
+		if (assistantDelta.length > 0) {
+			message.content += assistantDelta;
+		}
+		message.thinkingBlocks = state.blocks.length > 0 ? [...state.blocks] : undefined;
+
+		// Update the content directly instead of re-rendering the full message shell.
+		await this.updateStreamingContent(messageId, message);
 	}
 
-	private async updateStreamingContent(messageId: string, content: string) {
-		const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
-		if (messageElement) {
-			const contentEl = messageElement.querySelector('.local-llm-message-content') as HTMLElement;
-			if (contentEl) {
-				// Clear existing content
-				contentEl.empty();
-				// Render markdown for the streaming content
-				MarkdownRenderer.render(
-					this.app,
-					content,
-					contentEl,
-					'',
-					this
-				);
-				// Add streaming cursor
-				const cursor = contentEl.createEl('span', {
-					cls: 'streaming-cursor',
-					text: '▋'
-				});
+	private async updateStreamingContent(messageId: string, message: ChatMessage) {
+		this.pendingStreamingRender.set(messageId, message);
+		if (this.streamingRenderInFlight.has(messageId)) {
+			return;
+		}
 
-				// Ensure text is selectable
-				contentEl.addClass('local-llm-selectable-content');
+		this.streamingRenderInFlight.add(messageId);
+		try {
+			while (true) {
+				const nextMessage = this.pendingStreamingRender.get(messageId);
+				if (!nextMessage) {
+					break;
+				}
+				this.pendingStreamingRender.delete(messageId);
+
+				const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
+				if (!messageElement) {
+					break;
+				}
+
+				const contentEl = messageElement.querySelector('.local-llm-message-content') as HTMLElement | null;
+				if (!contentEl) {
+					break;
+				}
+
+				await this.renderAssistantMessageContent(contentEl, nextMessage);
+				this.messageContainer.scrollTop = this.messageContainer.scrollHeight;
 			}
+		} finally {
+			this.streamingRenderInFlight.delete(messageId);
 		}
 	}
 
 	private async finalizeStreamingMessage(messageId: string) {
 		const message = this.messages.find(m => m.id === messageId);
 		if (message) {
+			this.flushStreamingThinkingState(message);
 			message.isStreaming = false;
 			// Remove the existing message element and re-render with markdown
 			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
@@ -545,11 +576,253 @@ export class ChatView extends ItemView {
 		}
 	}
 
+	private getOrCreateStreamingThinkingState(messageId: string): StreamingThinkingState {
+		const existing = this.streamingThinkingState.get(messageId);
+		if (existing) {
+			return existing;
+		}
+
+		const created: StreamingThinkingState = {
+			inThinkBlock: false,
+			buffer: '',
+			blocks: [],
+			rawTranscript: ''
+		};
+		this.streamingThinkingState.set(messageId, created);
+		return created;
+	}
+
+	/**
+	 * Some providers send cumulative chunks instead of deltas.
+	 * Normalize to true delta text so we don't duplicate thinking/output.
+	 */
+	private normalizeStreamingChunk(state: StreamingThinkingState, chunk: string): string {
+		if (!chunk) {
+			return '';
+		}
+
+		if (state.rawTranscript && chunk.length > state.rawTranscript.length && chunk.startsWith(state.rawTranscript)) {
+			const delta = chunk.slice(state.rawTranscript.length);
+			state.rawTranscript = chunk;
+			return delta;
+		}
+
+		state.rawTranscript += chunk;
+		return chunk;
+	}
+
+	private extractAssistantContentFromChunk(state: StreamingThinkingState, chunk: string): string {
+		if (!chunk) {
+			return '';
+		}
+
+		const openTag = '<think>';
+		const closeTag = '</think>';
+		const assistantParts: string[] = [];
+		let input = state.buffer + chunk;
+		state.buffer = '';
+
+		while (input.length > 0) {
+			if (!state.inThinkBlock) {
+				const openIndex = input.toLowerCase().indexOf(openTag);
+				if (openIndex === -1) {
+					const carry = this.getTrailingTagPrefix(input, openTag);
+					const safeLength = input.length - carry.length;
+					if (safeLength > 0) {
+						assistantParts.push(input.slice(0, safeLength));
+					}
+					state.buffer = carry;
+					break;
+				}
+
+				if (openIndex > 0) {
+					assistantParts.push(input.slice(0, openIndex));
+				}
+
+				state.inThinkBlock = true;
+				state.blocks.push('');
+				input = input.slice(openIndex + openTag.length);
+				continue;
+			}
+
+			const closeIndex = input.toLowerCase().indexOf(closeTag);
+			if (closeIndex === -1) {
+				const carry = this.getTrailingTagPrefix(input, closeTag);
+				const safeLength = input.length - carry.length;
+				if (safeLength > 0) {
+					this.appendToThinkingBlock(state, input.slice(0, safeLength));
+				}
+				state.buffer = carry;
+				break;
+			}
+
+			if (closeIndex > 0) {
+				this.appendToThinkingBlock(state, input.slice(0, closeIndex));
+			}
+
+			state.inThinkBlock = false;
+			input = input.slice(closeIndex + closeTag.length);
+		}
+
+		return assistantParts.join('');
+	}
+
+	private flushStreamingThinkingState(message: ChatMessage): void {
+		const state = this.streamingThinkingState.get(message.id);
+		if (!state) {
+			return;
+		}
+
+		if (state.buffer.length > 0) {
+			if (state.inThinkBlock) {
+				this.appendToThinkingBlock(state, state.buffer);
+			} else {
+				message.content += state.buffer;
+			}
+		}
+
+		state.buffer = '';
+		state.inThinkBlock = false;
+		message.thinkingBlocks = state.blocks.length > 0 ? [...state.blocks] : undefined;
+		this.streamingThinkingState.delete(message.id);
+	}
+
+	private appendToThinkingBlock(state: StreamingThinkingState, value: string): void {
+		if (!value) {
+			return;
+		}
+
+		if (state.blocks.length === 0) {
+			state.blocks.push(value);
+			return;
+		}
+
+		const lastIndex = state.blocks.length - 1;
+		state.blocks[lastIndex] = `${state.blocks[lastIndex]}${value}`;
+	}
+
+	private getTrailingTagPrefix(value: string, tag: string): string {
+		const maxLength = Math.min(value.length, tag.length - 1);
+		const valueLower = value.toLowerCase();
+		const tagLower = tag.toLowerCase();
+
+		for (let prefixLength = maxLength; prefixLength > 0; prefixLength--) {
+			if (valueLower.endsWith(tagLower.slice(0, prefixLength))) {
+				return value.slice(value.length - prefixLength);
+			}
+		}
+
+		return '';
+	}
+
+	private async renderAssistantMessageContent(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
+		const responseEl = document.createElement('div');
+		responseEl.className = 'local-llm-assistant-response';
+
+		await MarkdownRenderer.render(
+			this.app,
+			message.content,
+			responseEl,
+			'',
+			this
+		);
+
+		if (!contentEl.parentElement) {
+			return;
+		}
+
+		contentEl.empty();
+		contentEl.appendChild(responseEl);
+
+		if (message.isStreaming) {
+			responseEl.createEl('span', {
+				cls: 'streaming-cursor',
+				text: '▋'
+			});
+		}
+
+		await this.renderThinkingSection(contentEl, message);
+
+		// Ensure text is selectable
+		contentEl.addClass('local-llm-selectable-content');
+	}
+
+	private async renderThinkingSection(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
+		const blocks = message.thinkingBlocks || [];
+		const streamState = this.streamingThinkingState.get(message.id);
+		const isThinkingActive = !!message.isStreaming && !!streamState?.inThinkBlock;
+		if (blocks.length === 0 && !isThinkingActive) {
+			return;
+		}
+
+		const recentLines = this.getRecentThinkingLines(blocks, 4);
+		const totalCharacters = blocks.reduce((sum, block) => sum + block.length, 0);
+
+		const thinkingContainer = contentEl.createEl('div', {
+			cls: 'local-llm-thinking-container'
+		});
+		const summaryRow = thinkingContainer.createEl('div', {
+			cls: 'local-llm-thinking-summary'
+		});
+
+		summaryRow.createEl('span', {
+			cls: 'local-llm-thinking-status',
+			text: isThinkingActive ? 'Thinking...' : 'Thought process'
+		});
+
+		const summaryControls = summaryRow.createEl('div', {
+			cls: 'local-llm-thinking-controls'
+		});
+		summaryControls.createEl('span', {
+			cls: 'local-llm-thinking-meta',
+			text: `${totalCharacters.toLocaleString()} chars`
+		});
+
+		const previewEl = thinkingContainer.createEl('div', {
+			cls: 'local-llm-thinking-preview-markdown'
+		});
+		for (const line of recentLines) {
+			const lineEl = previewEl.createEl('div', {
+				cls: 'local-llm-thinking-preview-line'
+			});
+			await MarkdownRenderer.render(
+				this.app,
+				line,
+				lineEl,
+				'',
+				this
+			);
+		}
+	}
+
+	private getRecentThinkingLines(blocks: string[], maxLines: number): string[] {
+		if (blocks.length === 0) {
+			return ['Analyzing...'];
+		}
+
+		const lines = blocks
+			.join('\n')
+			.replace(/\r/g, '')
+			.split('\n')
+			.map(line => line.trim())
+			.filter(line => line.length > 0);
+
+		if (lines.length === 0) {
+			return ['Analyzing...'];
+		}
+
+		return lines.slice(-maxLines);
+	}
+
 	private handleStreamingError(messageId: string, error: Error) {
 		const message = this.messages.find(m => m.id === messageId);
 		if (message) {
 			message.content = error.message;
 			message.isStreaming = false;
+			message.thinkingBlocks = undefined;
+			this.streamingThinkingState.delete(messageId);
+			this.pendingStreamingRender.delete(messageId);
+			this.streamingRenderInFlight.delete(messageId);
 			// Remove the existing message element and re-render
 			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
 			if (messageElement) {
@@ -571,6 +844,9 @@ export class ChatView extends ItemView {
 			messageElement.remove();
 		}
 		this.messages = this.messages.filter(m => m.id !== messageId);
+		this.streamingThinkingState.delete(messageId);
+		this.pendingStreamingRender.delete(messageId);
+		this.streamingRenderInFlight.delete(messageId);
 	}
 
 	private updateMessageDisplay(messageId: string) {
@@ -594,20 +870,12 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-message-content'
 		});
 
-		// Render markdown for assistant messages, plain text for user messages
-		if (message.role === 'assistant' && !message.isStreaming) {
-			// Use Obsidian's markdown renderer for completed assistant messages
-			MarkdownRenderer.render(
-				this.app,
-				message.content,
-				contentEl,
-				'',
-				this
-			);
-
+		// Render markdown for assistant messages, plain text for user messages.
+		if (message.role === 'assistant') {
+			await this.renderAssistantMessageContent(contentEl, message);
 
 			// Add refresh button for installation messages (welcome messages with installation instructions)
-			if (message.id === 'welcome' && message.content.includes('Welcome to Private AI!')) {
+			if (!message.isStreaming && message.id === 'welcome' && message.content.includes('Welcome to Private AI!')) {
 				const refreshButton = messageEl.createEl('button', {
 					cls: 'local-llm-refresh-button',
 					text: '🔄 Test connection',
@@ -653,15 +921,8 @@ export class ChatView extends ItemView {
 				});
 			}
 		} else {
-			// Plain text for user messages or streaming messages
+			// Plain text for user messages
 			contentEl.setText(message.content);
-
-			if (message.isStreaming) {
-				const cursor = contentEl.createEl('span', {
-					cls: 'streaming-cursor',
-					text: '▋'
-				});
-			}
 		}
 
 		// Add copy button for all non-streaming messages (both user and assistant)
@@ -817,6 +1078,9 @@ export class ChatView extends ItemView {
 		// Clear all messages
 		this.messages = [];
 		this.messageContainer.empty();
+		this.streamingThinkingState.clear();
+		this.pendingStreamingRender.clear();
+		this.streamingRenderInFlight.clear();
 
 		// Add new welcome message
 		this.addMessage({

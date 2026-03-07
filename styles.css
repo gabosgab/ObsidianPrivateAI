@@ -429,6 +429,74 @@
 	}
 }
 
+.local-llm-assistant-response:empty {
+	min-height: 1em;
+}
+
+.local-llm-thinking-container {
+	margin-top: 8px;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary-alt, var(--background-primary));
+	font-size: 12px;
+}
+
+.local-llm-thinking-summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+}
+
+.local-llm-thinking-status {
+	font-weight: 600;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.local-llm-thinking-controls {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+.local-llm-thinking-meta {
+	color: var(--text-faint);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+
+.local-llm-thinking-preview-markdown {
+	margin-top: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 12px;
+	line-height: 1.3;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.local-llm-thinking-preview-line {
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.local-llm-thinking-preview-line p,
+.local-llm-thinking-preview-line ul,
+.local-llm-thinking-preview-line ol {
+	margin: 0;
+}
+
+.local-llm-thinking-preview-line li {
+	margin: 0;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
 	.local-llm-message {

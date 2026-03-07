@@ -113,4 +113,71 @@ describe('Obsidian chat smoke test', () => {
     expect(rendered).toContain('Hello from test');
     expect(llmMock.sendMessageStream).toHaveBeenCalledTimes(1);
   });
+
+  it('streams think tags into collapsible thinking blocks without exposing raw tags', async () => {
+    llmMock.testConnection.mockResolvedValue({ success: true });
+
+    let releaseStepTwo: (() => void) | null = null;
+    let releaseFinish: (() => void) | null = null;
+    const stepTwoGate = new Promise<void>((resolve) => {
+      releaseStepTwo = resolve;
+    });
+    const finishGate = new Promise<void>((resolve) => {
+      releaseFinish = resolve;
+    });
+
+    llmMock.sendMessageStream.mockImplementation(async (_message: string, _history: any[], callback: (chunk: string, done: boolean) => Promise<void>) => {
+      await callback('<think>1. Analyze request\n2. Gather context', false);
+      await stepTwoGate;
+      await callback('\n3. Identify constraints\n4. Draft response\n5. Final pass', false);
+      await finishGate;
+      await callback('</think>Final answer', false);
+      await callback('', true);
+    });
+
+    const app = createAppStub();
+    const leaf = new WorkspaceLeaf(app);
+    const view = new ChatView(leaf as any, createPluginStub() as any);
+
+    await view.onOpen();
+
+    const input = view.containerEl.querySelector('textarea') as HTMLTextAreaElement;
+    const sendButton = view.containerEl.querySelector('.local-llm-send-button') as HTMLButtonElement;
+    input.value = 'test';
+    sendButton.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const inProgressText = view.containerEl.textContent ?? '';
+    expect(inProgressText).toContain('Thinking...');
+    expect(inProgressText).not.toContain('<think>');
+    let previewLines = Array.from(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line'));
+    expect(previewLines.length).toBe(2);
+    let previewText = (view.containerEl.querySelector('.local-llm-thinking-preview-markdown')?.textContent ?? '').trim();
+    expect(previewText).toContain('Analyze request');
+    expect(previewText).toContain('Gather context');
+    expect(view.containerEl.querySelectorAll('.local-llm-thinking-summary').length).toBe(1);
+
+    releaseStepTwo?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    previewLines = Array.from(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line'));
+    expect(previewLines.length).toBe(4);
+    previewText = (view.containerEl.querySelector('.local-llm-thinking-preview-markdown')?.textContent ?? '').trim();
+    expect(previewText).not.toContain('Analyze request');
+    expect(previewText).toContain('Gather context');
+    expect(previewText).toContain('Final pass');
+
+    releaseFinish?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rendered = view.containerEl.textContent ?? '';
+    expect(rendered).toContain('Final answer');
+    expect(rendered).toContain('Thought process');
+    expect(rendered).not.toContain('<think>');
+    expect(rendered).not.toContain('</think>');
+    expect(view.containerEl.querySelector('.local-llm-thinking-toggle')).toBeNull();
+    expect(view.containerEl.querySelector('.local-llm-thinking-details')).toBeNull();
+  });
 });
