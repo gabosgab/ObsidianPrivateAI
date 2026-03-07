@@ -23,6 +23,11 @@ interface StreamingThinkingState {
 	rawTranscript: string;
 }
 
+interface ThinkingViewportState {
+	shouldAutoScroll: boolean;
+	scrollTop: number;
+}
+
 interface LLMConfig {
 	apiEndpoint: string;
 	maxTokens: number;
@@ -63,6 +68,7 @@ export class ChatView extends ItemView {
 	private contextMode: ContextMode = ContextMode.OPEN_NOTES;
 	private plugin: LocalLLMPlugin;
 	private streamingThinkingState = new Map<string, StreamingThinkingState>();
+	private thinkingPanelVisibleState = new Map<string, boolean>();
 	private streamingRenderInFlight = new Set<string>();
 	private pendingStreamingRender = new Map<string, ChatMessage>();
 
@@ -567,6 +573,7 @@ export class ChatView extends ItemView {
 		if (message) {
 			this.flushStreamingThinkingState(message);
 			message.isStreaming = false;
+			this.thinkingPanelVisibleState.set(message.id, false);
 			// Remove the existing message element and re-render with markdown
 			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
 			if (messageElement) {
@@ -716,6 +723,7 @@ export class ChatView extends ItemView {
 	}
 
 	private async renderAssistantMessageContent(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
+		const viewportState = this.captureThinkingViewportState(contentEl);
 		const responseEl = document.createElement('div');
 		responseEl.className = 'local-llm-assistant-response';
 
@@ -741,22 +749,48 @@ export class ChatView extends ItemView {
 			});
 		}
 
-		await this.renderThinkingSection(contentEl, message);
+		await this.renderThinkingSection(contentEl, message, viewportState);
 
 		// Ensure text is selectable
 		contentEl.addClass('local-llm-selectable-content');
 	}
 
-	private async renderThinkingSection(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
+	private captureThinkingViewportState(contentEl: HTMLElement): ThinkingViewportState {
+		const previewEl = contentEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement | null;
+		if (!previewEl) {
+			return { shouldAutoScroll: true, scrollTop: 0 };
+		}
+
+		const distanceFromBottom = previewEl.scrollHeight - previewEl.clientHeight - previewEl.scrollTop;
+		return {
+			shouldAutoScroll: distanceFromBottom <= 24,
+			scrollTop: previewEl.scrollTop
+		};
+	}
+
+	private getThinkingPanelVisible(message: ChatMessage): boolean {
+		const current = this.thinkingPanelVisibleState.get(message.id);
+		if (current !== undefined) {
+			return current;
+		}
+
+		const defaultVisible = !!message.isStreaming;
+		this.thinkingPanelVisibleState.set(message.id, defaultVisible);
+		return defaultVisible;
+	}
+
+	private async renderThinkingSection(contentEl: HTMLElement, message: ChatMessage, viewportState: ThinkingViewportState): Promise<void> {
 		const blocks = message.thinkingBlocks || [];
 		const streamState = this.streamingThinkingState.get(message.id);
 		const isThinkingActive = !!message.isStreaming && !!streamState?.inThinkBlock;
 		if (blocks.length === 0 && !isThinkingActive) {
+			this.thinkingPanelVisibleState.delete(message.id);
 			return;
 		}
 
 		const thinkingLines = this.getThinkingLines(blocks);
 		const totalCharacters = blocks.reduce((sum, block) => sum + block.length, 0);
+		const isPanelVisible = this.getThinkingPanelVisible(message);
 
 		const thinkingContainer = contentEl.createEl('div', {
 			cls: 'local-llm-thinking-container'
@@ -777,6 +811,39 @@ export class ChatView extends ItemView {
 			cls: 'local-llm-thinking-meta',
 			text: `${totalCharacters.toLocaleString()} chars`
 		});
+		const toggleButton = summaryControls.createEl('button', {
+			cls: 'local-llm-thinking-toggle',
+			text: isPanelVisible ? 'Hide' : 'Show',
+			attr: { type: 'button' }
+		});
+
+		let pointerToggleHandled = false;
+		const togglePanelVisibility = () => {
+			const current = this.thinkingPanelVisibleState.get(message.id) ?? !!message.isStreaming;
+			this.thinkingPanelVisibleState.set(message.id, !current);
+			this.updateMessageDisplay(message.id);
+		};
+
+		toggleButton.addEventListener('pointerdown', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			pointerToggleHandled = true;
+			togglePanelVisibility();
+		});
+		// Keep click for keyboard/programmatic activation paths.
+		toggleButton.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			if (pointerToggleHandled) {
+				pointerToggleHandled = false;
+				return;
+			}
+			togglePanelVisibility();
+		});
+
+		if (!isPanelVisible) {
+			return;
+		}
 
 		const previewEl = thinkingContainer.createEl('div', {
 			cls: 'local-llm-thinking-preview-markdown'
@@ -794,8 +861,15 @@ export class ChatView extends ItemView {
 			);
 		}
 
-		// Keep the thinking viewport pinned to the newest output.
-		previewEl.scrollTop = previewEl.scrollHeight;
+		// Keep the viewport pinned only when the user is already near the bottom.
+		if (viewportState.shouldAutoScroll) {
+			previewEl.scrollTop = previewEl.scrollHeight;
+		} else {
+			previewEl.scrollTop = Math.min(
+				viewportState.scrollTop,
+				Math.max(0, previewEl.scrollHeight - previewEl.clientHeight)
+			);
+		}
 	}
 
 	private getThinkingLines(blocks: string[]): string[] {
@@ -824,6 +898,7 @@ export class ChatView extends ItemView {
 			message.isStreaming = false;
 			message.thinkingBlocks = undefined;
 			this.streamingThinkingState.delete(messageId);
+			this.thinkingPanelVisibleState.delete(messageId);
 			this.pendingStreamingRender.delete(messageId);
 			this.streamingRenderInFlight.delete(messageId);
 			// Remove the existing message element and re-render
@@ -848,6 +923,7 @@ export class ChatView extends ItemView {
 		}
 		this.messages = this.messages.filter(m => m.id !== messageId);
 		this.streamingThinkingState.delete(messageId);
+		this.thinkingPanelVisibleState.delete(messageId);
 		this.pendingStreamingRender.delete(messageId);
 		this.streamingRenderInFlight.delete(messageId);
 	}
@@ -1082,6 +1158,7 @@ export class ChatView extends ItemView {
 		this.messages = [];
 		this.messageContainer.empty();
 		this.streamingThinkingState.clear();
+		this.thinkingPanelVisibleState.clear();
 		this.pendingStreamingRender.clear();
 		this.streamingRenderInFlight.clear();
 

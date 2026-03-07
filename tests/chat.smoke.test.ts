@@ -158,6 +158,9 @@ describe('Obsidian chat smoke test', () => {
     expect(previewText).toContain('Analyze request');
     expect(previewText).toContain('Gather context');
     expect(view.containerEl.querySelectorAll('.local-llm-thinking-summary').length).toBe(1);
+    const streamingToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    expect(streamingToggle).toBeTruthy();
+    expect(streamingToggle.textContent ?? '').toContain('Hide');
 
     releaseStepTwo?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -177,7 +180,16 @@ describe('Obsidian chat smoke test', () => {
     expect(rendered).toContain('Thought process');
     expect(rendered).not.toContain('<think>');
     expect(rendered).not.toContain('</think>');
-    expect(view.containerEl.querySelector('.local-llm-thinking-toggle')).toBeNull();
-    expect(view.containerEl.querySelector('.local-llm-thinking-details')).toBeNull();
+    const completedToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    expect(completedToggle).toBeTruthy();
+    expect(completedToggle.textContent ?? '').toContain('Show');
+    expect(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line').length).toBe(0);
+
+    completedToggle.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    completedToggle.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const reopenedToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    expect(reopenedToggle.textContent ?? '').toContain('Hide');
+    expect(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line').length).toBe(5);
   });
 });

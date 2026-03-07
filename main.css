@@ -373,6 +373,18 @@
   font-size: 11px;
   flex-shrink: 0;
 }
+.local-llm-thinking-toggle {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.local-llm-thinking-toggle:hover {
+  background: var(--background-modifier-hover);
+}
 .local-llm-thinking-preview-markdown {
   margin-top: 6px;
   display: flex;
