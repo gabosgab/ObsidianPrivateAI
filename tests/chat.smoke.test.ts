@@ -163,9 +163,9 @@ describe('Obsidian chat smoke test', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
     previewLines = Array.from(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line'));
-    expect(previewLines.length).toBe(4);
+    expect(previewLines.length).toBe(5);
     previewText = (view.containerEl.querySelector('.local-llm-thinking-preview-markdown')?.textContent ?? '').trim();
-    expect(previewText).not.toContain('Analyze request');
+    expect(previewText).toContain('Analyze request');
     expect(previewText).toContain('Gather context');
     expect(previewText).toContain('Final pass');
 

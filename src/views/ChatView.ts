@@ -755,7 +755,7 @@ export class ChatView extends ItemView {
 			return;
 		}
 
-		const recentLines = this.getRecentThinkingLines(blocks, 4);
+		const thinkingLines = this.getThinkingLines(blocks);
 		const totalCharacters = blocks.reduce((sum, block) => sum + block.length, 0);
 
 		const thinkingContainer = contentEl.createEl('div', {
@@ -781,7 +781,7 @@ export class ChatView extends ItemView {
 		const previewEl = thinkingContainer.createEl('div', {
 			cls: 'local-llm-thinking-preview-markdown'
 		});
-		for (const line of recentLines) {
+		for (const line of thinkingLines) {
 			const lineEl = previewEl.createEl('div', {
 				cls: 'local-llm-thinking-preview-line'
 			});
@@ -793,9 +793,12 @@ export class ChatView extends ItemView {
 				this
 			);
 		}
+
+		// Keep the thinking viewport pinned to the newest output.
+		previewEl.scrollTop = previewEl.scrollHeight;
 	}
 
-	private getRecentThinkingLines(blocks: string[], maxLines: number): string[] {
+	private getThinkingLines(blocks: string[]): string[] {
 		if (blocks.length === 0) {
 			return ['Analyzing...'];
 		}
@@ -811,7 +814,7 @@ export class ChatView extends ItemView {
 			return ['Analyzing...'];
 		}
 
-		return lines.slice(-maxLines);
+		return lines;
 	}
 
 	private handleStreamingError(messageId: string, error: Error) {

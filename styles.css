@@ -474,6 +474,9 @@
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
+	max-height: calc(1.3em * 4 + 8px);
+	overflow-y: auto;
+	padding-right: 2px;
 	font-size: 12px;
 	line-height: 1.3;
 	white-space: normal;
