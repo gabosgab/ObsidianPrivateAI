@@ -339,6 +339,83 @@
     transform: translateY(-50%) rotate(360deg);
   }
 }
+.local-llm-assistant-response:empty {
+  min-height: 1em;
+}
+.local-llm-thinking-container {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary-alt, var(--background-primary));
+  font-size: 12px;
+}
+.local-llm-thinking-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.local-llm-thinking-status {
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.local-llm-thinking-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.local-llm-thinking-meta {
+  color: var(--text-faint);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.local-llm-thinking-toggle {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.local-llm-thinking-toggle:hover {
+  background: var(--background-modifier-hover);
+}
+.local-llm-thinking-preview-markdown {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(1.3em * 4 + 8px);
+  overflow-y: auto;
+  padding-right: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.local-llm-thinking-preview-hidden {
+  display: none;
+}
+.local-llm-thinking-preview-line {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.local-llm-thinking-preview-line p,
+.local-llm-thinking-preview-line ul,
+.local-llm-thinking-preview-line ol {
+  margin: 0;
+}
+.local-llm-thinking-preview-line li {
+  margin: 0;
+}
 @media (max-width: 768px) {
   .local-llm-message {
     max-width: 95%;

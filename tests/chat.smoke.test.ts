@@ -65,6 +65,12 @@ function createAppStub() {
   };
 }
 
+async function flushRenderTicks(iterations: number = 2): Promise<void> {
+  for (let index = 0; index < iterations; index++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 describe('Obsidian chat smoke test', () => {
   beforeEach(() => {
     llmMock.testConnection.mockReset();
@@ -112,5 +118,188 @@ describe('Obsidian chat smoke test', () => {
     expect(rendered).toContain('ping');
     expect(rendered).toContain('Hello from test');
     expect(llmMock.sendMessageStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('streams think tags into collapsible thinking blocks without exposing raw tags', async () => {
+    llmMock.testConnection.mockResolvedValue({ success: true });
+
+    let releaseStepTwo: (() => void) | null = null;
+    let releaseFinish: (() => void) | null = null;
+    const stepTwoGate = new Promise<void>((resolve) => {
+      releaseStepTwo = resolve;
+    });
+    const finishGate = new Promise<void>((resolve) => {
+      releaseFinish = resolve;
+    });
+
+    llmMock.sendMessageStream.mockImplementation(async (_message: string, _history: any[], callback: (chunk: string, done: boolean) => Promise<void>) => {
+      await callback('<think>1. Analyze request\n2. Gather context', false);
+      await stepTwoGate;
+      await callback('\n3. Identify constraints\n4. Draft response\n5. Final pass', false);
+      await finishGate;
+      await callback('</think>Final answer', false);
+      await callback('', true);
+    });
+
+    const app = createAppStub();
+    const leaf = new WorkspaceLeaf(app);
+    const view = new ChatView(leaf as any, createPluginStub() as any);
+
+    await view.onOpen();
+
+    const input = view.containerEl.querySelector('textarea') as HTMLTextAreaElement;
+    const sendButton = view.containerEl.querySelector('.local-llm-send-button') as HTMLButtonElement;
+    input.value = 'test';
+    sendButton.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const inProgressText = view.containerEl.textContent ?? '';
+    expect(inProgressText).toContain('Thinking...');
+    expect(inProgressText).not.toContain('<think>');
+    let previewLines = Array.from(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line'));
+    expect(previewLines.length).toBe(2);
+    let previewText = (view.containerEl.querySelector('.local-llm-thinking-preview-markdown')?.textContent ?? '').trim();
+    expect(previewText).toContain('Analyze request');
+    expect(previewText).toContain('Gather context');
+    expect(view.containerEl.querySelectorAll('.local-llm-thinking-summary').length).toBe(1);
+    const streamingToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    expect(streamingToggle).toBeTruthy();
+    expect(streamingToggle.textContent ?? '').toContain('Hide');
+
+    releaseStepTwo?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    previewLines = Array.from(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line'));
+    expect(previewLines.length).toBe(5);
+    previewText = (view.containerEl.querySelector('.local-llm-thinking-preview-markdown')?.textContent ?? '').trim();
+    expect(previewText).toContain('Analyze request');
+    expect(previewText).toContain('Gather context');
+    expect(previewText).toContain('Final pass');
+
+    releaseFinish?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rendered = view.containerEl.textContent ?? '';
+    expect(rendered).toContain('Final answer');
+    expect(rendered).toContain('Thought process');
+    expect(rendered).not.toContain('<think>');
+    expect(rendered).not.toContain('</think>');
+    const completedToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    expect(completedToggle).toBeTruthy();
+    expect(completedToggle.textContent ?? '').toContain('Show');
+    const collapsedPreview = view.containerEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement;
+    expect(collapsedPreview).toBeTruthy();
+    expect(collapsedPreview.classList.contains('local-llm-thinking-preview-hidden')).toBe(true);
+
+    completedToggle.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const reopenedToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    expect(reopenedToggle.textContent ?? '').toContain('Hide');
+    const reopenedPreview = view.containerEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement;
+    expect(reopenedPreview.classList.contains('local-llm-thinking-preview-hidden')).toBe(false);
+    expect(view.containerEl.querySelectorAll('.local-llm-thinking-preview-line').length).toBe(5);
+  });
+
+  it('keeps the thinking panel stable during streaming, with sticky scroll and responsive toggles', async () => {
+    llmMock.testConnection.mockResolvedValue({ success: true });
+
+    const chunkGates: Array<() => void> = [];
+    const waitForChunkGate = () => new Promise<void>((resolve) => {
+      chunkGates.push(resolve);
+    });
+
+    llmMock.sendMessageStream.mockImplementation(async (_message: string, _history: any[], callback: (chunk: string, done: boolean) => Promise<void>) => {
+      await callback('<think>1. Start', false);
+      for (let step = 2; step <= 6; step++) {
+        await waitForChunkGate();
+        await callback(`\n${step}. Step ${step}`, false);
+      }
+      await waitForChunkGate();
+      await callback('</think>Done', false);
+      await callback('', true);
+    });
+
+    const app = createAppStub();
+    const leaf = new WorkspaceLeaf(app);
+    const view = new ChatView(leaf as any, createPluginStub() as any);
+
+    await view.onOpen();
+
+    const input = view.containerEl.querySelector('textarea') as HTMLTextAreaElement;
+    const sendButton = view.containerEl.querySelector('.local-llm-send-button') as HTMLButtonElement;
+    input.value = 'stream stress';
+    sendButton.click();
+    await flushRenderTicks(3);
+
+    const toggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+    const preview = view.containerEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement;
+    expect(toggle).toBeTruthy();
+    expect(preview).toBeTruthy();
+
+    let scrollTopValue = 0;
+    let scrollHeightValue = 160;
+    Object.defineProperty(preview, 'clientHeight', {
+      configurable: true,
+      get: () => 40
+    });
+    Object.defineProperty(preview, 'scrollHeight', {
+      configurable: true,
+      get: () => scrollHeightValue
+    });
+    Object.defineProperty(preview, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTopValue,
+      set: (value: number) => {
+        scrollTopValue = value;
+      }
+    });
+
+    scrollTopValue = scrollHeightValue;
+    preview.dispatchEvent(new Event('scroll'));
+    scrollHeightValue += 40;
+    const firstGate = chunkGates.shift();
+    expect(firstGate).toBeTruthy();
+    firstGate?.();
+    await flushRenderTicks(2);
+    expect(scrollTopValue).toBe(scrollHeightValue);
+
+    scrollTopValue = 10;
+    preview.dispatchEvent(new Event('scroll'));
+    scrollHeightValue += 40;
+    const secondGate = chunkGates.shift();
+    expect(secondGate).toBeTruthy();
+    secondGate?.();
+    await flushRenderTicks(2);
+    expect(scrollTopValue).toBe(10);
+
+    for (let index = 0; index < 3; index++) {
+      const before = toggle.textContent ?? '';
+      toggle.click();
+      await flushRenderTicks(1);
+      expect(toggle.textContent ?? '').not.toBe(before);
+
+      scrollHeightValue += 40;
+      const gate = chunkGates.shift();
+      expect(gate).toBeTruthy();
+      gate?.();
+      await flushRenderTicks(2);
+
+      const liveToggle = view.containerEl.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement;
+      const livePreview = view.containerEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement;
+      expect(liveToggle).toBe(toggle);
+      expect(livePreview).toBe(preview);
+    }
+
+    const finalGate = chunkGates.shift();
+    expect(finalGate).toBeTruthy();
+    finalGate?.();
+    await flushRenderTicks(3);
+
+    const rendered = view.containerEl.textContent ?? '';
+    expect(rendered).toContain('Done');
+    expect(rendered).not.toContain('<think>');
+    expect(rendered).not.toContain('</think>');
   });
 });
