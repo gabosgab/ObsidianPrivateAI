@@ -43,6 +43,7 @@ export class MigrationRunner {
                     db.run("COMMIT");
                     LoggingUtility.log(`Migration version ${migration.version} applied successfully`);
                 } catch (error) {
+                    LoggingUtility.error(`Error during migration ${migration.version}:`, error);
                     db.run("ROLLBACK");
                     throw error;
                 }
