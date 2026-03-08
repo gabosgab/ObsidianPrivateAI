@@ -73,7 +73,7 @@ export class UnifiedVectorDatabase {
 			try {
 				this.db.run("PRAGMA journal_mode = WAL");
 			} catch (e) {
-				LoggingUtility.warn("Could not set WAL mode (might be unsupported in this WASM build):", e);
+				LoggingUtility.error("Could not set WAL mode (might be unsupported in this WASM build):", e);
 			}
 
 			// Initialize schema version table
