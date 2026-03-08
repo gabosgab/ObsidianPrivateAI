@@ -477,6 +477,7 @@
 	font-size: 11px;
 	padding: 2px 8px;
 	cursor: pointer;
+	touch-action: manipulation;
 }
 
 .local-llm-thinking-toggle:hover {
@@ -496,6 +497,10 @@
 	white-space: normal;
 	overflow-wrap: anywhere;
 	word-break: break-word;
+}
+
+.local-llm-thinking-preview-hidden {
+	display: none;
 }
 
 .local-llm-thinking-preview-line {

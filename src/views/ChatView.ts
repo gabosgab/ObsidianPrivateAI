@@ -23,9 +23,16 @@ interface StreamingThinkingState {
 	rawTranscript: string;
 }
 
-interface ThinkingViewportState {
-	shouldAutoScroll: boolean;
-	scrollTop: number;
+interface ThinkingViewState {
+	expanded: boolean;
+	stickToBottom: boolean;
+}
+
+interface ThinkingPanelElements {
+	statusEl: HTMLElement;
+	metaEl: HTMLElement;
+	toggleButton: HTMLButtonElement;
+	previewEl: HTMLElement;
 }
 
 interface LLMConfig {
@@ -68,7 +75,7 @@ export class ChatView extends ItemView {
 	private contextMode: ContextMode = ContextMode.OPEN_NOTES;
 	private plugin: LocalLLMPlugin;
 	private streamingThinkingState = new Map<string, StreamingThinkingState>();
-	private thinkingPanelVisibleState = new Map<string, boolean>();
+	private thinkingViewState = new Map<string, ThinkingViewState>();
 	private streamingRenderInFlight = new Set<string>();
 	private pendingStreamingRender = new Map<string, ChatMessage>();
 
@@ -227,7 +234,7 @@ export class ChatView extends ItemView {
 		});
 
 		// Add initial welcome message
-		this.addMessage({
+		await this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
 			content: await ChatView.getWelcomeMessage(this.llmService),
@@ -347,7 +354,7 @@ export class ChatView extends ItemView {
 			timestamp: new Date()
 		};
 
-		this.addMessage(userMessage);
+		await this.addMessage(userMessage);
 		this.inputElement.value = '';
 
 		// Create abort controller for this request
@@ -409,7 +416,7 @@ export class ChatView extends ItemView {
 			usedNotes: searchResults.length > 0 ? searchResults : undefined
 		};
 
-		this.addMessage(assistantMessage);
+		await this.addMessage(assistantMessage);
 
 		try {
 			// Convert chat history to LLM format
@@ -573,7 +580,8 @@ export class ChatView extends ItemView {
 		if (message) {
 			this.flushStreamingThinkingState(message);
 			message.isStreaming = false;
-			this.thinkingPanelVisibleState.set(message.id, false);
+			const viewState = this.getOrCreateThinkingViewState(message);
+			viewState.expanded = false;
 			// Remove the existing message element and re-render with markdown
 			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
 			if (messageElement) {
@@ -723,10 +731,20 @@ export class ChatView extends ItemView {
 	}
 
 	private async renderAssistantMessageContent(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
-		const viewportState = this.captureThinkingViewportState(contentEl);
-		const responseEl = document.createElement('div');
-		responseEl.className = 'local-llm-assistant-response';
+		await this.renderAssistantResponse(contentEl, message);
+		await this.renderThinkingSection(contentEl, message);
+		contentEl.addClass('local-llm-selectable-content');
+	}
 
+	private async renderAssistantResponse(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
+		let responseEl = contentEl.querySelector('.local-llm-assistant-response') as HTMLElement | null;
+		if (!responseEl) {
+			responseEl = contentEl.createEl('div', {
+				cls: 'local-llm-assistant-response'
+			});
+		}
+
+		responseEl.empty();
 		await MarkdownRenderer.render(
 			this.app,
 			message.content,
@@ -735,13 +753,6 @@ export class ChatView extends ItemView {
 			this
 		);
 
-		if (!contentEl.parentElement) {
-			return;
-		}
-
-		contentEl.empty();
-		contentEl.appendChild(responseEl);
-
 		if (message.isStreaming) {
 			responseEl.createEl('span', {
 				cls: 'streaming-cursor',
@@ -749,107 +760,174 @@ export class ChatView extends ItemView {
 			});
 		}
 
-		await this.renderThinkingSection(contentEl, message, viewportState);
-
-		// Ensure text is selectable
-		contentEl.addClass('local-llm-selectable-content');
+		const thinkingContainer = contentEl.querySelector('.local-llm-thinking-container') as HTMLElement | null;
+		if (thinkingContainer && responseEl.nextSibling !== thinkingContainer) {
+			contentEl.insertBefore(responseEl, thinkingContainer);
+		}
 	}
 
-	private captureThinkingViewportState(contentEl: HTMLElement): ThinkingViewportState {
-		const previewEl = contentEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement | null;
-		if (!previewEl) {
-			return { shouldAutoScroll: true, scrollTop: 0 };
+	private getOrCreateThinkingViewState(message: ChatMessage): ThinkingViewState {
+		const existing = this.thinkingViewState.get(message.id);
+		if (existing) {
+			return existing;
 		}
 
+		const created: ThinkingViewState = {
+			expanded: !!message.isStreaming,
+			stickToBottom: true
+		};
+		this.thinkingViewState.set(message.id, created);
+		return created;
+	}
+
+	private isThinkingPreviewNearBottom(previewEl: HTMLElement): boolean {
 		const distanceFromBottom = previewEl.scrollHeight - previewEl.clientHeight - previewEl.scrollTop;
+		return distanceFromBottom <= 24;
+	}
+
+	private getOrCreateThinkingPanelElements(contentEl: HTMLElement, messageId: string): ThinkingPanelElements {
+		let containerEl = contentEl.querySelector('.local-llm-thinking-container') as HTMLElement | null;
+		if (!containerEl) {
+			containerEl = contentEl.createEl('div', {
+				cls: 'local-llm-thinking-container'
+			});
+		}
+
+		let summaryRow = containerEl.querySelector('.local-llm-thinking-summary') as HTMLElement | null;
+		if (!summaryRow) {
+			summaryRow = containerEl.createEl('div', {
+				cls: 'local-llm-thinking-summary'
+			});
+		}
+
+		let statusEl = summaryRow.querySelector('.local-llm-thinking-status') as HTMLElement | null;
+		if (!statusEl) {
+			statusEl = summaryRow.createEl('span', {
+				cls: 'local-llm-thinking-status'
+			});
+		}
+
+		let summaryControls = summaryRow.querySelector('.local-llm-thinking-controls') as HTMLElement | null;
+		if (!summaryControls) {
+			summaryControls = summaryRow.createEl('div', {
+				cls: 'local-llm-thinking-controls'
+			});
+		}
+
+		let metaEl = summaryControls.querySelector('.local-llm-thinking-meta') as HTMLElement | null;
+		if (!metaEl) {
+			metaEl = summaryControls.createEl('span', {
+				cls: 'local-llm-thinking-meta'
+			});
+		}
+
+		let toggleButton = summaryControls.querySelector('.local-llm-thinking-toggle') as HTMLButtonElement | null;
+		if (!toggleButton) {
+			toggleButton = summaryControls.createEl('button', {
+				cls: 'local-llm-thinking-toggle',
+				attr: { type: 'button' }
+			});
+		}
+
+		let previewEl = containerEl.querySelector('.local-llm-thinking-preview-markdown') as HTMLElement | null;
+		if (!previewEl) {
+			previewEl = containerEl.createEl('div', {
+				cls: 'local-llm-thinking-preview-markdown'
+			});
+		}
+
+		if (toggleButton.dataset.boundMessageId !== messageId) {
+			toggleButton.dataset.boundMessageId = messageId;
+			toggleButton.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				this.handleThinkingPanelToggle(messageId);
+			});
+		}
+
+		if (previewEl.dataset.scrollBound !== 'true') {
+			previewEl.dataset.scrollBound = 'true';
+			previewEl.addEventListener('scroll', () => {
+				const message = this.messages.find(m => m.id === messageId);
+				if (!message) {
+					return;
+				}
+
+				const state = this.getOrCreateThinkingViewState(message);
+				state.stickToBottom = this.isThinkingPreviewNearBottom(previewEl as HTMLElement);
+			});
+		}
+
 		return {
-			shouldAutoScroll: distanceFromBottom <= 24,
-			scrollTop: previewEl.scrollTop
+			statusEl,
+			metaEl,
+			toggleButton,
+			previewEl
 		};
 	}
 
-	private getThinkingPanelVisible(message: ChatMessage): boolean {
-		const current = this.thinkingPanelVisibleState.get(message.id);
-		if (current !== undefined) {
-			return current;
+	private setThinkingPanelExpanded(elements: ThinkingPanelElements, expanded: boolean): void {
+		elements.toggleButton.textContent = expanded ? 'Hide' : 'Show';
+		if (expanded) {
+			elements.previewEl.removeClass('local-llm-thinking-preview-hidden');
+		} else {
+			elements.previewEl.addClass('local-llm-thinking-preview-hidden');
 		}
-
-		const defaultVisible = !!message.isStreaming;
-		this.thinkingPanelVisibleState.set(message.id, defaultVisible);
-		return defaultVisible;
 	}
 
-	private async renderThinkingSection(contentEl: HTMLElement, message: ChatMessage, viewportState: ThinkingViewportState): Promise<void> {
+	private handleThinkingPanelToggle(messageId: string): void {
+		const message = this.messages.find(m => m.id === messageId);
+		if (!message) {
+			return;
+		}
+
+		const state = this.getOrCreateThinkingViewState(message);
+		state.expanded = !state.expanded;
+
+		const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null;
+		const contentEl = messageElement?.querySelector('.local-llm-message-content') as HTMLElement | null;
+		if (!contentEl) {
+			return;
+		}
+
+		const panel = this.getOrCreateThinkingPanelElements(contentEl, messageId);
+		this.setThinkingPanelExpanded(panel, state.expanded);
+
+		if (state.expanded && state.stickToBottom) {
+			panel.previewEl.scrollTop = panel.previewEl.scrollHeight;
+		}
+	}
+
+	private async renderThinkingSection(contentEl: HTMLElement, message: ChatMessage): Promise<void> {
 		const blocks = message.thinkingBlocks || [];
 		const streamState = this.streamingThinkingState.get(message.id);
 		const isThinkingActive = !!message.isStreaming && !!streamState?.inThinkBlock;
 		if (blocks.length === 0 && !isThinkingActive) {
-			this.thinkingPanelVisibleState.delete(message.id);
+			const existingContainer = contentEl.querySelector('.local-llm-thinking-container') as HTMLElement | null;
+			if (existingContainer) {
+				existingContainer.remove();
+			}
+			this.thinkingViewState.delete(message.id);
 			return;
 		}
 
 		const thinkingLines = this.getThinkingLines(blocks);
 		const totalCharacters = blocks.reduce((sum, block) => sum + block.length, 0);
-		const isPanelVisible = this.getThinkingPanelVisible(message);
+		const state = this.getOrCreateThinkingViewState(message);
+		const panel = this.getOrCreateThinkingPanelElements(contentEl, message.id);
+		const previousScrollTop = panel.previewEl.scrollTop;
 
-		const thinkingContainer = contentEl.createEl('div', {
-			cls: 'local-llm-thinking-container'
-		});
-		const summaryRow = thinkingContainer.createEl('div', {
-			cls: 'local-llm-thinking-summary'
-		});
-
-		summaryRow.createEl('span', {
-			cls: 'local-llm-thinking-status',
-			text: isThinkingActive ? 'Thinking...' : 'Thought process'
-		});
-
-		const summaryControls = summaryRow.createEl('div', {
-			cls: 'local-llm-thinking-controls'
-		});
-		summaryControls.createEl('span', {
-			cls: 'local-llm-thinking-meta',
-			text: `${totalCharacters.toLocaleString()} chars`
-		});
-		const toggleButton = summaryControls.createEl('button', {
-			cls: 'local-llm-thinking-toggle',
-			text: isPanelVisible ? 'Hide' : 'Show',
-			attr: { type: 'button' }
-		});
-
-		let pointerToggleHandled = false;
-		const togglePanelVisibility = () => {
-			const current = this.thinkingPanelVisibleState.get(message.id) ?? !!message.isStreaming;
-			this.thinkingPanelVisibleState.set(message.id, !current);
-			this.updateMessageDisplay(message.id);
-		};
-
-		toggleButton.addEventListener('pointerdown', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			pointerToggleHandled = true;
-			togglePanelVisibility();
-		});
-		// Keep click for keyboard/programmatic activation paths.
-		toggleButton.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			if (pointerToggleHandled) {
-				pointerToggleHandled = false;
-				return;
-			}
-			togglePanelVisibility();
-		});
-
-		if (!isPanelVisible) {
-			return;
+		if (state.expanded) {
+			state.stickToBottom = this.isThinkingPreviewNearBottom(panel.previewEl);
 		}
 
-		const previewEl = thinkingContainer.createEl('div', {
-			cls: 'local-llm-thinking-preview-markdown'
-		});
+		panel.statusEl.textContent = isThinkingActive ? 'Thinking...' : 'Thought process';
+		panel.metaEl.textContent = `${totalCharacters.toLocaleString()} chars`;
+		this.setThinkingPanelExpanded(panel, state.expanded);
+
+		panel.previewEl.empty();
 		for (const line of thinkingLines) {
-			const lineEl = previewEl.createEl('div', {
+			const lineEl = panel.previewEl.createEl('div', {
 				cls: 'local-llm-thinking-preview-line'
 			});
 			await MarkdownRenderer.render(
@@ -861,15 +939,19 @@ export class ChatView extends ItemView {
 			);
 		}
 
-		// Keep the viewport pinned only when the user is already near the bottom.
-		if (viewportState.shouldAutoScroll) {
-			previewEl.scrollTop = previewEl.scrollHeight;
-		} else {
-			previewEl.scrollTop = Math.min(
-				viewportState.scrollTop,
-				Math.max(0, previewEl.scrollHeight - previewEl.clientHeight)
-			);
+		if (!state.expanded) {
+			return;
 		}
+
+		if (state.stickToBottom) {
+			panel.previewEl.scrollTop = panel.previewEl.scrollHeight;
+			return;
+		}
+
+		panel.previewEl.scrollTop = Math.min(
+			previousScrollTop,
+			Math.max(0, panel.previewEl.scrollHeight - panel.previewEl.clientHeight)
+		);
 	}
 
 	private getThinkingLines(blocks: string[]): string[] {
@@ -898,7 +980,7 @@ export class ChatView extends ItemView {
 			message.isStreaming = false;
 			message.thinkingBlocks = undefined;
 			this.streamingThinkingState.delete(messageId);
-			this.thinkingPanelVisibleState.delete(messageId);
+			this.thinkingViewState.delete(messageId);
 			this.pendingStreamingRender.delete(messageId);
 			this.streamingRenderInFlight.delete(messageId);
 			// Remove the existing message element and re-render
@@ -911,9 +993,9 @@ export class ChatView extends ItemView {
 		LoggingUtility.error('Error calling local LLM:', error);
 	}
 
-	private addMessage(message: ChatMessage) {
+	private async addMessage(message: ChatMessage): Promise<void> {
 		this.messages.push(message);
-		this.renderMessage(message);
+		await this.renderMessage(message);
 	}
 
 	private removeMessage(messageId: string) {
@@ -923,20 +1005,9 @@ export class ChatView extends ItemView {
 		}
 		this.messages = this.messages.filter(m => m.id !== messageId);
 		this.streamingThinkingState.delete(messageId);
-		this.thinkingPanelVisibleState.delete(messageId);
+		this.thinkingViewState.delete(messageId);
 		this.pendingStreamingRender.delete(messageId);
 		this.streamingRenderInFlight.delete(messageId);
-	}
-
-	private updateMessageDisplay(messageId: string) {
-		const message = this.messages.find(m => m.id === messageId);
-		if (message) {
-			const messageElement = this.messageContainer.querySelector(`[data-message-id="${messageId}"]`);
-			if (messageElement) {
-				messageElement.remove();
-			}
-			this.renderMessage(message);
-		}
 	}
 
 	private async renderMessage(message: ChatMessage) {
@@ -1158,12 +1229,12 @@ export class ChatView extends ItemView {
 		this.messages = [];
 		this.messageContainer.empty();
 		this.streamingThinkingState.clear();
-		this.thinkingPanelVisibleState.clear();
+		this.thinkingViewState.clear();
 		this.pendingStreamingRender.clear();
 		this.streamingRenderInFlight.clear();
 
 		// Add new welcome message
-		this.addMessage({
+		await this.addMessage({
 			id: 'welcome',
 			role: 'assistant',
 			content: await ChatView.getWelcomeMessage(this.llmService),
