@@ -1185,20 +1185,19 @@ export class ChatView extends ItemView {
 	}
 
 	/**
-	 * Deduplicate search results by document path, keeping only the highest relevance score for each unique document
+	 * Deduplicate search results by document path, keeping only the highest relevance score for each unique document.
+	 * Assumes input is already sorted by relevance (highest first).
 	 */
 	private deduplicateNotesByPath(notes: SearchResult[]): SearchResult[] {
-		const notesByPath = new Map<string, SearchResult>();
+		const seenPaths = new Set<string>();
 
-		for (const note of notes) {
-			const existing = notesByPath.get(note.path);
-			if (!existing || note.relevance > existing.relevance) {
-				notesByPath.set(note.path, note);
+		return notes.filter((note) => {
+			if (seenPaths.has(note.path)) {
+				return false;
 			}
-		}
-
-		// Return deduplicated notes sorted by relevance (highest first)
-		return Array.from(notesByPath.values()).sort((a, b) => b.relevance - a.relevance);
+			seenPaths.add(note.path);
+			return true;
+		});
 	}
 
 	private stopStreaming() {
