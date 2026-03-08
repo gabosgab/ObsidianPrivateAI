@@ -86,7 +86,7 @@ export class SearchService {
 					LoggingUtility.log(`Found relevant file: ${result.title} (${(result.relevance * 100).toFixed(1)}% relevant)`);
 				}
 			} catch (error) {
-				LoggingUtility.warn(`Error searching file ${file.path}:`, error);
+				LoggingUtility.error(`Error searching file ${file.path}:`, error);
 			}
 		}
 
@@ -126,7 +126,7 @@ export class SearchService {
 			};
 
 		} catch (error) {
-			LoggingUtility.warn(`Error processing file ${file.path}:`, error);
+			LoggingUtility.error(`Error processing file ${file.path}:`, error);
 			return null;
 		}
 	}
@@ -340,14 +340,14 @@ export class SearchService {
 						path: file.path
 					});
 				} catch (error) {
-					LoggingUtility.warn(`Error reading file ${file.path}:`, error);
+					LoggingUtility.error(`Error reading file ${file.path}:`, error);
 				}
 			}
 
 			return results;
 
 		} catch (error) {
-			LoggingUtility.warn('Error getting current note context:', error);
+			LoggingUtility.error('Error getting current note context:', error);
 			return [];
 		}
 	}
@@ -402,14 +402,14 @@ export class SearchService {
 						path: file.path
 					});
 				} catch (error) {
-					LoggingUtility.warn(`Error reading file ${file.path}:`, error);
+					LoggingUtility.error(`Error reading file ${file.path}:`, error);
 				}
 			}
 
 			return results;
 
 		} catch (error) {
-			LoggingUtility.warn('Error getting recent notes context:', error);
+			LoggingUtility.error('Error getting recent notes context:', error);
 			return [];
 		}
 	}
