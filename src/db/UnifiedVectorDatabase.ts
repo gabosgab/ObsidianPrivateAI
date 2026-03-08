@@ -211,6 +211,7 @@ export class UnifiedVectorDatabase {
 			await this.save();
 		} catch (error) {
 			this.db.run("ROLLBACK");
+			LoggingUtility.error('Failed to upsert file documents:', error);
 			throw error;
 		}
 	}
