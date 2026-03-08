@@ -545,7 +545,8 @@ export class LLMService {
 				`${parsedUrl.origin}${basePath}/api/v1/models`,
 				`${parsedUrl.origin}${basePath}/v1/models`
 			];
-		} catch {
+			} catch (error) {
+				LoggingUtility.error('Error parsing URL for model endpoint:', error);
 			const fallbackBase = this.config.apiEndpoint
 				.replace('/chat/completions', '')
 				.replace('/embeddings', '')
@@ -600,7 +601,8 @@ export class LLMService {
 		// Validate URL format
 		try {
 			new URL(this.config.apiEndpoint);
-		} catch {
+			} catch (error) {
+				LoggingUtility.error('Invalid API endpoint URL format:', error);
 			errors.push('Invalid API endpoint URL format');
 		}
 

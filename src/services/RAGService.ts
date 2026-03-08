@@ -277,7 +277,7 @@ export class RAGService {
 			this.imageTextExtractor = new ImageTextExtractor(llmService, this.app);
 			LoggingUtility.log('Image text extractor initialized successfully');
 		} catch (error) {
-			LoggingUtility.warn('Failed to initialize image text extractor:', error);
+			LoggingUtility.error('Failed to initialize image text extractor:', error);
 			this.imageTextExtractor = undefined;
 		}
 	}
@@ -553,7 +553,7 @@ export class RAGService {
 
 			return isFresh;
 		} catch (error) {
-			LoggingUtility.warn('Error detecting fresh install, assuming fresh:', error);
+			LoggingUtility.error('Error detecting fresh install, assuming fresh:', error);
 			return true; // Err on the side of rebuilding
 		}
 	}
@@ -955,7 +955,7 @@ export class RAGService {
 
 			return false;
 		} catch (error) {
-			LoggingUtility.warn('Error checking if file is active:', error);
+			LoggingUtility.error('Error checking if file is active:', error);
 			return false; // Err on the side of processing if we can't detect
 		}
 	}
@@ -1052,7 +1052,7 @@ export class RAGService {
 				}
 			}
 		} catch (error) {
-			LoggingUtility.warn('Error handling active leaf change:', error);
+			LoggingUtility.error('Error handling active leaf change:', error);
 		}
 	}
 
@@ -1069,7 +1069,7 @@ export class RAGService {
 				this.lastActiveFilePath = null;
 			}
 		} catch (error) {
-			LoggingUtility.warn('Error updating last active file:', error);
+			LoggingUtility.error('Error updating last active file:', error);
 			this.lastActiveFilePath = null;
 		}
 	}
@@ -1501,7 +1501,7 @@ export class RAGService {
 						size: file.stat.size
 					});
 				} catch (error) {
-					LoggingUtility.warn(`Could not read file for checksum: ${file.path}`, error);
+					LoggingUtility.error(`Could not read file for checksum: ${file.path}`, error);
 				}
 
 				// Yield control periodically
@@ -1909,7 +1909,7 @@ export class RAGService {
 					fileChunkCounts.set(file.path, chunkCount);
 					totalChunks += chunkCount;
 				} catch (error) {
-					LoggingUtility.warn(`Could not read file for chunk calculation: ${file.path}`, error);
+					LoggingUtility.error(`Could not read file for chunk calculation: ${file.path}`, error);
 					fileChunkCounts.set(file.path, 0);
 				}
 
@@ -2157,7 +2157,7 @@ export class RAGService {
 					fileChunkCounts.set(file.path, chunkCount);
 					totalChunks += chunkCount;
 				} catch (error) {
-					LoggingUtility.warn(`Could not read file for chunk calculation: ${file.path}`, error);
+					LoggingUtility.error(`Could not read file for chunk calculation: ${file.path}`, error);
 					fileChunkCounts.set(file.path, 0);
 				}
 

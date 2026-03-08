@@ -376,7 +376,7 @@ export class ChatView extends ItemView {
 				LoggingUtility.log('No context mode selected - using message without additional context');
 			}
 		} catch (searchError) {
-			LoggingUtility.warn('Error getting context:', searchError);
+			LoggingUtility.error('Error getting context:', searchError);
 			// Continue without search context if search fails
 		} finally {
 			this.showSearchIndicator(false);
