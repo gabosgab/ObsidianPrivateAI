@@ -1354,6 +1354,7 @@ Once your server is running, click the test connection button below.`;
 					: 'Paused';
 
 		this.ragStatusContent.empty();
+		// Secure DOM manipulation used here (createEl instead of innerHTML) to prevent XSS
 		const progressContainer = this.ragStatusContent.createEl('div', { cls: 'local-llm-rag-progress' });
 
 		const headerEl = progressContainer.createEl('div', { cls: 'local-llm-rag-progress-header' });
