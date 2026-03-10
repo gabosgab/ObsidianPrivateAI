@@ -44,7 +44,11 @@ export class MigrationRunner {
                     LoggingUtility.log(`Migration version ${migration.version} applied successfully`);
                 } catch (error) {
                     LoggingUtility.error(`Error during migration ${migration.version}:`, error);
-                    db.run("ROLLBACK");
+                    try {
+                        db.run("ROLLBACK");
+                    } catch (rollbackError) {
+                        LoggingUtility.error(`Failed to rollback migration ${migration.version}:`, rollbackError);
+                    }
                     throw error;
                 }
             } catch (error) {
