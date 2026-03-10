@@ -1510,12 +1510,9 @@ export class RAGService {
 				}
 			}
 
-			// FIX: Add image files to existingFiles set so they aren't removed as obsolete
-			// The original code only added markdown files, causing removeObsoleteDocuments to delete all image entries
-			const imageFiles = this.getIncludedImageFiles();
-			for (const img of imageFiles) {
-				existingFiles.add(img.path);
-			}
+			// Ensure image files are included in existingFiles so they aren't removed as obsolete.
+			// This prevents removeObsoleteDocuments from deleting valid image entries.
+			this.getIncludedImageFiles().forEach(img => existingFiles.add(img.path));
 
 			// Remove documents for files that no longer exist
 			await this.vectorDB.removeObsoleteDocuments(existingFiles);
