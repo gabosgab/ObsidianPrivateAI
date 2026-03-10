@@ -36,24 +36,27 @@ execSync('git push origin HEAD:main', { stdio: 'inherit' });
 execSync('git push --tags', { stdio: 'inherit' });
 
 // Wait 30 seconds
-console.log('Waiting 60 seconds for GitHub action to create the release...');
-await new Promise(resolve => setTimeout(resolve, 60000));
+if (!process.env.CI && !process.env.GITHUB_ACTIONS) {
+  console.log('Waiting 60 seconds for GitHub action to create the release...');
+  await new Promise(resolve => setTimeout(resolve, 60000));
 
-// Open releases page in browser
-const releaseUrl = 'https://github.com/gabosgab/ObsidianPrivateAI/releases';
-console.log(`Opening ${releaseUrl} in browser...`);
+  // Open releases page in browser
+  const releaseUrl = 'https://github.com/gabosgab/ObsidianPrivateAI/releases';
+  console.log(`Opening ${releaseUrl} in browser...`);
 
-// Cross-platform browser opening
-const platform = process.platform;
-let openCommand;
+  // Cross-platform browser opening
+  const platform = process.platform;
+  let openCommand;
 
-if (platform === 'darwin') {
-  openCommand = `open "${releaseUrl}"`;
-} else if (platform === 'win32') {
-  openCommand = `start "" "${releaseUrl}"`;
-} else {
-  openCommand = `xdg-open "${releaseUrl}"`;
+  if (platform === 'darwin') {
+    openCommand = `open "${releaseUrl}"`;
+  } else if (platform === 'win32') {
+    openCommand = `start "" "${releaseUrl}"`;
+  } else {
+    openCommand = `xdg-open "${releaseUrl}"`;
+  }
+
+  execSync(openCommand, { stdio: 'inherit' });
 }
 
-execSync(openCommand, { stdio: 'inherit' });
 console.log('Done!');
