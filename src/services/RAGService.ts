@@ -347,6 +347,26 @@ export class RAGService {
 				try {
 					LoggingUtility.log(`Processing image ${i + 1}/${imageFiles.length}: ${imageFile.path}`);
 
+					// Check if image has changed since last extraction by comparing checksum
+					const newImageChecksum = await this.calculateCRC32(imageFile);
+
+					if (this.indexingAbortController?.signal.aborted) break;
+
+					const existingImageDocs = this.vectorDB.getFileDocuments(imageFile.path);
+
+					if (existingImageDocs.length > 0) {
+						const existingChecksum = existingImageDocs[0].metadata.fileChecksum;
+						if (existingChecksum === newImageChecksum) {
+							// Image content hasn't changed, skip extraction
+							LoggingUtility.log(`Image unchanged since last extraction, skipping: ${imageFile.path}`);
+							continue;
+						} else {
+							LoggingUtility.log(`Image content changed: ${imageFile.path} (new checksum: ${newImageChecksum}, old: ${existingChecksum})`);
+						}
+					} else {
+						LoggingUtility.log(`New image detected: ${imageFile.path} (checksum: ${newImageChecksum})`);
+					}
+
 					// Extract text from image
 					const result = await this.imageTextExtractor.extractTextFromImage(imageFile);
 
@@ -363,7 +383,7 @@ export class RAGService {
 							// Generate embeddings for chunks
 							const texts = chunks.map(c => c.text);
 							const embeddings = await this.generateEmbeddings(texts);
-							const checksum = await this.calculateCRC32(imageFile);
+							const checksum = newImageChecksum;
 
 							// Create chunk documents for the image
 							const chunkDocuments = chunks.map((chunk, index) => ({
