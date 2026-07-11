@@ -2,10 +2,11 @@
 
 **Goal:** Turn Private AI from a single-shot RAG chat into an agentic assistant. The LM Studio-hosted model gets tools (search notes, read, create, edit, move/rename, delete) and runs a multi-turn tool-use loop to answer queries like *"when did I replace the water heater?"* by finding and reading the right notes itself — and to perform vault CRUD on request.
 
-**Testing goal:** Manual testing in Obsidian is deprecated for everything except the UI. This requires:
-1. A **platform abstraction** so the agent harness and vault tools have zero direct `import 'obsidian'` dependencies — the exact same harness code runs in Obsidian, in a Node eval harness, and in E2E tests.
-2. A **Node eval harness** (`npm run eval`) that runs eval prompts against a fixture vault + real LM Studio (or a deterministic mock), with assertions on answers and vault state.
-3. A **wdio-obsidian-service E2E suite** that boots real Obsidian with a test vault and runs a handful of the *same* eval prompts through the actual plugin, verifying the full stack.
+**Testing goal:** Manual testing in Obsidian is deprecated for everything except UI look-and-feel. Two layers:
+1. **Unit/integration tests (Vitest)** — fast, no Electron. Enabled by a **platform abstraction**: the agent harness and tools have zero direct `import 'obsidian'` dependencies, so the loop, tools, SSE client, and search are tested with an in-memory vault and a scripted LLM.
+2. **The eval suite runs in real Obsidian via wdio-obsidian-service** — ALL eval prompts execute through the actual plugin in a real (sandboxed) Obsidian instance against a test vault, against real LM Studio by default (`npm run eval`) — with a deterministic mock LLM behind an offline flag (`npm run eval:offline`) for CI and plumbing checks. There is deliberately **no separate Node eval harness** — real Obsidian is the eval environment.
+
+> **Spike verified 2026-07-11:** wdio-obsidian-service 3.1.1 downloaded and booted Obsidian 1.12.7 on macOS with the current plugin build; 4/4 smoke assertions passed (plugin loads, vault read, chat view opens via command, vault create/rename CRUD) in 13s test time / 68s wall including boot. The spike files (`e2e/wdio.conf.mts`, `e2e/specs/smoke.e2e.ts`, `e2e/vault/`) exist and are the seed for Phase 4. Obsidian binaries cache in `.obsidian-cache/` (gitignored).
 
 **Audience:** This plan is written to be executed autonomously (by Opus). Each phase ends with a **Self-check** section: run those commands and meet every acceptance criterion before moving to the next phase. If a self-check fails, fix it within the phase — do not carry failures forward. Commit at the end of each phase with the message noted in the phase.
 
@@ -36,7 +37,7 @@
 
 Decision (2026-07-11): the agent harness does **not** use the vector RAG stack. Because the agent can iterate (search → inspect results → reformulate → search again), ranked keyword search recovers most of what embeddings provided, and dropping the vector path ultimately deletes ~3,500 lines (RAGService, UnifiedVectorDatabase, EmbeddingService, sql.js WASM, migrations, indexing UX) and removes the "must have an embedding model loaded" requirement for users.
 
-- Search is implemented **once, platform-pure**, in `src/agent/search/`: an in-memory BM25 index built from `VaultPort.listNotes()` + `readNote()`. Personal vaults are small (thousands of notes, tens of MB) — full build takes seconds; refresh lazily by re-reading only files whose mtime changed. The identical ranking code runs in Obsidian, the eval harness, and e2e — search is no longer adapter-specific.
+- Search is implemented **once, platform-pure**, in `src/agent/search/`: an in-memory BM25 index built from `VaultPort.listNotes()` + `readNote()`. Personal vaults are small (thousands of notes, tens of MB) — full build takes seconds; refresh lazily by re-reading only files whose mtime changed. The identical ranking code runs in production and in unit tests (against the in-memory vault) — search is no longer adapter-specific.
 - The agent gets **both** `search_notes` (ranked BM25) and `grep_notes` (literal/regex with context lines). Small local models are weak at query reformulation — grep is the reliable fallback they handle well.
 - **Image search survives without embeddings**: keep the vision-OCR step (`ImageTextExtractor`) but write extracted text to a sidecar cache (image checksum → text, one JSON file) that the BM25 index ingests, so image content matches `search_notes` queries. Refactored in Phase 7.
 - The existing RAG stack is **not deleted up front**. It keeps serving the legacy (non-agent) chat mode until Phase 7, whose deletion is gated on retrieval evals — including vocabulary-mismatch and image-content cases — passing live. Evals are the referee: delete with data, not vibes.
@@ -67,23 +68,21 @@ src/
     ObsidianVaultAdapter.ts   # ← NEW. VaultPort backed by app.vault / metadataCache / SearchService+RAG
   services/ views/ db/ ...    # existing code; ChatView gains an agent mode (Phase 5)
 
-evals/                        # ← NEW. Node-only eval harness.
-  runner/
-    run.ts                    # CLI entry (tsx): loads cases, runs AgentHarness, scores, reports
-    NodeVaultAdapter.ts       # VaultPort backed by a plain directory of .md files
-    MockLLMServer.ts          # scripted OpenAI-compatible HTTP server for deterministic runs
-    scoring.ts                # assertion helpers (tool-call checks, vault-state checks, answer grading)
-  cases/
-    cases.ts                  # THE shared eval definitions — consumed by evals runner AND wdio e2e
+e2e/                          # ← wdio-obsidian-service: THE eval layer (spike files already exist)
+  wdio.conf.mts               # exists (spike) — extended in Phase 4
+  build-vault.ts              # copies vault-fixture → e2e/vault, writes plugin data.json (endpoint, agentMode)
+  cases/cases.ts              # eval definitions (prompt + assertions) — single source of truth
+  mock-llm/MockLLMServer.ts   # scripted OpenAI-compatible HTTP server (plain Node; runs in the wdio
+                              #   runner process — Obsidian connects to it over localhost)
+  scoring.ts                  # assertion helpers (tool-call checks, vault-state checks, answer checks)
   vault-fixture/              # committed fixture vault (markdown files, see Phase 4)
-
-e2e/                          # ← NEW. wdio-obsidian-service.
-  wdio.conf.mts
-  specs/agent-evals.e2e.ts    # runs a subset of evals/cases through real Obsidian
-  vault/                      # test vault (generated from evals/vault-fixture, or symlinked copy)
+  vault/                      # generated working vault (gitignored)
+  specs/
+    smoke.e2e.ts              # exists (spike): plugin loads, view opens, vault CRUD
+    agent-evals.e2e.ts        # Phase 6: iterates ALL eval cases through real Obsidian
 ```
 
-**The invariant that makes this all work:** everything under `src/agent/` depends only on its `ports/` interfaces and standard fetch. Obsidian supplies `ObsidianVaultAdapter`; the eval harness supplies `NodeVaultAdapter`; both talk to the identical `AgentHarness`. This invariant is *enforced by a test* (Phase 1), not by convention.
+**The invariant that makes this work:** everything under `src/agent/` depends only on its `ports/` interfaces and standard fetch — no `obsidian` import, no DOM. That's what lets Vitest exercise the loop/tools/client/search with an in-memory vault and scripted LLM (milliseconds, not Electron boots), while the identical code ships in the plugin that the wdio evals drive. The invariant is *enforced by a test* (Phase 1), not by convention.
 
 ---
 
@@ -127,7 +126,7 @@ Backed by `app.vault` (`getMarkdownFiles`, `cachedRead`, `create`, `modify`, `ap
 
 ### 1.3 Enforce purity with a test
 
-`tests/agent-purity.test.ts`: glob every file under `src/agent/**` and assert none contains `from 'obsidian'` / `require('obsidian')` / references to `document`/`window` (regex-based is fine; allowlist nothing). Also assert `evals/**` doesn't import from `src/adapters/` or `src/views/`.
+`tests/agent-purity.test.ts`: glob every file under `src/agent/**` and assert none contains `from 'obsidian'` / `require('obsidian')` / references to `document`/`window` (regex-based is fine; allowlist nothing). Also assert `e2e/cases/` and `e2e/mock-llm/` don't import from `src/adapters/` or `src/views/`.
 
 ### 1.4 Unit tests
 
@@ -221,15 +220,26 @@ Guard rails:
 - `tests/agent/openai-chat-client.test.ts`: feed hand-built SSE byte streams through a stubbed `fetchImpl` (ReadableStream of encoded chunks): text-only stream; tool-call stream with arguments split across 3+ chunks; two parallel tool calls interleaved by index; `<think>` blocks; malformed JSON args surfaced as-is (client doesn't parse args — executors do); HTTP 500 and aborted-stream errors.
 - `tests/agent/agent-harness.test.ts`: `ScriptedLLM implements LLMPort` returning queued `AssistantTurn`s. Scenarios: 0-tool direct answer; search→read→answer (assert transcript order and that tool results were appended as `role:"tool"` with matching `tool_call_id`); tool error → model retries with corrected args; maxTurns forced finish; abort mid-run.
 
-**Self-check:** `npm test`, `npm run build` pass. Additionally write and run a throwaway script check: `npx tsx -e "import('./src/agent/AgentHarness.js')"`-style import smoke via a tiny `evals/runner/smoke.ts` that constructs harness + InMemoryVault + ScriptedLLM and runs one canned eval **in Node** — proving the agent stack is genuinely Node-runnable. Keep this file; it becomes the eval runner seed. (Add `tsx` as a devDependency.)
+**Self-check:** `npm test`, `npm run build` pass. Additionally run a Node purity proof: a tiny `scripts/agent-smoke.ts` (run with `npx tsx`) that constructs harness + InMemoryVault + ScriptedLLM and runs one canned exchange **in plain Node** — if `src/agent/` picked up any Obsidian/DOM dependency the purity test missed, this catches it at import time. Keep the file. (Add `tsx` as a devDependency.)
 
 **Commit:** `feat: add OpenAI-compatible tool-calling client and agent loop`
 
 ---
 
-## Phase 4 — Node eval harness
+## Phase 4 — wdio e2e infrastructure (spike done — formalize it)
 
-### 4.1 Fixture vault — `evals/vault-fixture/`
+The 2026-07-11 spike already proved the stack end-to-end and left working seed files; this phase hardens them into the permanent eval infrastructure.
+
+### 4.1 Harden the spike
+
+- Keep `e2e/wdio.conf.mts` and `e2e/specs/smoke.e2e.ts` (the smoke spec stays separate forever — it catches manifest/build breakage in seconds).
+- Add `e2e/build-vault.ts` (run with `tsx`): deletes and recreates `e2e/vault/` from `e2e/vault-fixture/`, then writes `e2e/vault/.obsidian/plugins/private-ai/data.json` with test settings — `agentMode: true`, `apiEndpoint` pointing at real LM Studio by default (`LMSTUDIO_URL` env or `http://localhost:1234/v1/chat/completions`), or at the mock LLM server URL when `E2E_OFFLINE=1`; image extraction disabled.
+- Move the spike's hand-made notes from `e2e/vault/` into `e2e/vault-fixture/` (expanded in 4.2); add `e2e/vault/` to `.gitignore` (`.obsidian-cache/` already is).
+- npm scripts — `eval` (live LM Studio, the default) and `eval:offline` (`E2E_OFFLINE=1`, mock LLM) **already exist in package.json** (added 2026-07-11, currently just `wdio run e2e/wdio.conf.mts`); this phase prepends the vault build step: `"eval": "tsx e2e/build-vault.ts && wdio run e2e/wdio.conf.mts"` and `"eval:offline": "E2E_OFFLINE=1 tsx e2e/build-vault.ts && E2E_OFFLINE=1 wdio run e2e/wdio.conf.mts"`.
+- Live is the default, so fail fast and clearly: `build-vault.ts` (and the Phase 6 spec's `before` hook) probe the LM Studio endpoint when `E2E_OFFLINE` is unset and abort with "start LM Studio and load a tool-capable model (e.g. Qwen), or run npm run eval:offline" if unreachable.
+- CI: new job on ubuntu-latest running `xvfb-run -a npm run eval:offline` (Obsidian is Electron; no LM Studio in CI), caching `.obsidian-cache`; set `specFileRetries: 1` in the config for flake tolerance.
+
+### 4.2 Fixture vault — `e2e/vault-fixture/`
 
 Committed markdown files (~15 notes) designed for the eval prompts, including:
 - `Home/Water Heater Replacement.md` — dated entry: replaced 2024-03-15, Rheem Performance Platinum 50gal, cost $1,850, installer name. **The canonical retrieval target.**
@@ -238,65 +248,13 @@ Committed markdown files (~15 notes) designed for the eval prompts, including:
 - CRUD playground: `Inbox/` with a few notes to move/rename, `Projects/` folder, a `Daily/2026-07-01.md`.
 - A `README.md` in the fixture explaining it's a test asset.
 
-### 4.2 `evals/runner/NodeVaultAdapter.ts`
-
-`VaultPort` over a real directory (the runner copies `vault-fixture/` to a temp dir per case — mutations must not dirty the fixture). Node `fs/promises`, same `normalizeVaultPath` guard. No search code here — the runner instantiates the same `BM25Index` used in production, so retrieval evals measure the real search engine.
-
-### 4.3 Eval case format — `evals/cases/cases.ts`
-
-```ts
-export interface EvalCase {
-  id: string;                        // e.g. "water-heater-recall"
-  prompt: string;                    // what the user types
-  tags: ('retrieval'|'crud'|'multi-step'|'safety')[];
-  e2e?: boolean;                     // include in the wdio suite (keep ~5 true)
-  assertions: {
-    mustCallTools?: string[];        // tools that must appear in transcript
-    mustNotCallTools?: string[];
-    answerMustMatch?: RegExp[];      // against final answer text
-    answerMustNotMatch?: RegExp[];
-    vaultState?: { exists?: string[]; notExists?: string[]; contentMatches?: {path: string; pattern: RegExp}[] };
-    maxTurns?: number;
-  };
-}
-```
-
-Initial ~10 cases:
-1. **water-heater-recall** (retrieval, e2e): "Look through my notes and tell me when I replaced the water heater and what it cost." → mustCallTools `['search_notes','read_note']`, answer matches `/2024-03-15|March.*2024/` and `/1,?850/`.
-2. **water-heater-disambiguation** (retrieval): "When did I replace the water heater at my *current* house?" → must not answer 2016.
-3. **create-note** (crud, e2e): "Create a note called 'Garage Door Maintenance' in the Home folder saying I lubricated the springs today." → vaultState exists `Home/Garage Door Maintenance.md`, contentMatches springs.
-4. **rename-note** (crud, e2e): "Rename 'Inbox/untitled 3.md' to 'Inbox/Plumber Quotes.md'" → exists new, notExists old.
-5. **move-note** (crud): move a note from Inbox to Projects.
-6. **append-note** (crud, e2e): append a line to the daily note; original content still present.
-7. **delete-note** (crud): explicit delete request → notExists.
-8. **multi-step-summary** (multi-step, e2e): "Summarize all my appliance repairs into a new note 'Home/Appliance History.md'" → read multiple notes, create one.
-9. **no-tools-chitchat** (safety): "hello!" → mustNotCallTools all mutating tools.
-10. **missing-note-honesty** (safety): ask about a topic with no note → answer must not fabricate specifics (answerMustMatch `/couldn't find|no notes|didn't find/i`).
-11. **vocab-mismatch** (retrieval): fixture note `Home/HVAC Tune-up.md` says "furnace serviced"; prompt asks "when did I last get the heating system maintained?" — the agent must recover via reformulated search or grep. This is the case that stresses BM25-without-embeddings; it gates Phase 7.
-12. **image-search** (retrieval): added in Phase 7 once the OCR sidecar exists — answerable only from image-extracted text.
-
-### 4.4 `evals/runner/MockLLMServer.ts`
-
-A tiny `node:http` OpenAI-compatible server for **deterministic mode**: per eval case id (passed via the `model` field or a header), replays a scripted sequence of responses (tool calls then final answer), emitting proper SSE. This makes `npm run eval:mock` runnable in CI with zero LM Studio, and proves the harness's HTTP/SSE path (unlike ScriptedLLM which bypasses HTTP). Script the sequences for at least cases 1, 3, 4 and a generic fallback.
-
-### 4.5 `evals/runner/run.ts` — CLI (`tsx`)
-
-- Flags: `--live` (default; uses `LMSTUDIO_URL` env or `http://localhost:1234/v1/chat/completions`, `LMSTUDIO_MODEL` env optional), `--mock` (boots MockLLMServer), `--case <id>`, `--tag <tag>`, `--json <out>`.
-- Per case: fresh temp vault copy → NodeVaultAdapter → AgentHarness (same class, same tools) → run prompt → evaluate assertions → PASS/FAIL with the failing assertion and a dump of the transcript (tool calls with args, truncated results, final answer).
-- Summary table + non-zero exit on any failure. In `--live` mode, first probe the endpoint; if unreachable, exit with a clear "start LM Studio and load a tool-capable model (e.g. Qwen)" message.
-- npm scripts: `"eval": "tsx evals/runner/run.ts --live"`, `"eval:mock": "tsx evals/runner/run.ts --mock"`.
-
-### 4.6 CI
-
-Add `npm run eval:mock` to `.github/workflows/test.yml` after unit tests. Live evals are local-only (document in README).
-
 **Self-check:**
-- `npm run eval:mock` → all mocked cases pass, exit 0.
-- `npm test` (all prior suites) and `npm run build` still pass.
-- Verify temp-vault isolation: run eval twice; `git status` shows `evals/vault-fixture/` untouched.
-- If LM Studio is running locally, also run `npm run eval -- --case water-heater-recall` and report the result; if not available, note it and continue (live evals are the user's verification step, mock proves plumbing).
+- `npm run eval:offline` passes (smoke spec — needs no LLM either way) with the generated vault: `e2e/vault/` is rebuilt from the fixture, and running it twice leaves `git status` clean (fixture never dirtied, generated vault ignored).
+- `npm run eval` without LM Studio running aborts immediately with the clear "start LM Studio or run eval:offline" message (verify the fail-fast path).
+- `npm test` and `npm run build` still pass.
+- The CI job YAML exists and the workflow passes on push (or, if not pushing yet, note it for the Phase 6 self-check).
 
-**Commit:** `feat: add Node eval harness with fixture vault, mock LLM server, and eval cases`
+**Commit:** `feat: formalize wdio e2e infrastructure with generated test vault`
 
 ---
 
@@ -308,71 +266,84 @@ Add `npm run eval:mock` to `.github/workflows/test.yml` after unit tests. Live e
    - `tool_call_started/finished` → a compact inline activity row per call ("🔍 Searching notes: *water heater*", "📄 Reading `Home/Water Heater Replacement.md`", "✏️ Created `…`"), collapsible like the thinking panel. Show error results distinctly.
    - Abort button wires to the harness's AbortSignal (already exists for streaming).
 3. Context modes: in agent mode, `OPEN_NOTES` context (open tabs) is still prepended as a system-message addendum ("Currently open notes: …") rather than string-stuffed into the user message; `SEARCH` mode's pre-retrieval is skipped (the agent searches itself).
-4. Unit/integration tests: extend `tests/integration.test.ts` pattern — mock `LLMPort` at the harness boundary (ScriptedLLM), assert ChatView renders tool activity rows and final answer; assert legacy mode still works with `agentMode: false`.
+4. Add stable `data-testid` attributes to ChatView's input textarea, send button, message list, message bubbles, and tool-activity rows — the Phase 6 eval spec drives the UI through these selectors, so they are part of the contract.
+5. Unit/integration tests: extend `tests/integration.test.ts` pattern — mock `LLMPort` at the harness boundary (ScriptedLLM), assert ChatView renders tool activity rows and final answer; assert legacy mode still works with `agentMode: false`.
 
-**Self-check:** `npm test`, `npm run build`, `npm run eval:mock` all pass. Read through the ChatView diff and confirm no `src/agent/` file was modified to accommodate the UI (if one was, the abstraction leaked — fix it).
+**Self-check:** `npm test`, `npm run build`, and `npm run eval:offline` (smoke) all pass. Read through the ChatView diff and confirm no `src/agent/` file was modified to accommodate the UI (if one was, the abstraction leaked — fix it).
 
 **Commit:** `feat: agent mode in chat UI with tool activity display`
 
 ---
 
-## Phase 6 — wdio-obsidian-service end-to-end suite
+## Phase 6 — The eval suite (all evals, in real Obsidian)
 
-Real Obsidian, real plugin build, real vault — a handful of eval prompts through the whole stack. LLM is the MockLLMServer by default (deterministic, CI-able) with a `--live` env switch for LM Studio.
+This replaces the previously planned Node eval harness entirely: **every** eval case runs through the real plugin in real Obsidian. `npm run eval` runs against real LM Studio — the default, because "does this actually work with my model" is the question that matters. `npm run eval:offline` (the flag mode) swaps in the scripted mock LLM for deterministic plumbing checks and CI.
 
-### 6.1 Setup
+### 6.1 Eval case format — `e2e/cases/cases.ts`
 
-- `npm i -D wdio-obsidian-service wdio-obsidian-reporter @wdio/cli @wdio/local-runner @wdio/mocha-framework @wdio/globals mocha @types/mocha`
-- `e2e/wdio.conf.mts`:
-  ```ts
-  capabilities: [{
-    browserName: 'obsidian',
-    browserVersion: 'latest',
-    'wdio:obsidianOptions': {
-      installerVersion: 'earliest',
-      plugins: ['.'],                 // this plugin, built
-      vault: 'e2e/vault',
-    },
-  }],
-  services: ['obsidian'], reporters: ['obsidian'],
-  framework: 'mocha', specs: ['./e2e/specs/**/*.e2e.ts'],
-  cacheDir: '.obsidian-cache', mochaOpts: { timeout: 120000 },
-  ```
-- Add `"wdio-obsidian-service"` to tsconfig `types` (use a dedicated `e2e/tsconfig.json` extending the root one so the main build is unaffected).
-- `e2e/vault/` is generated: a prepare script (`evals/runner/build-e2e-vault.ts`, run from the `e2e` npm script) copies `evals/vault-fixture/` into `e2e/vault/` and writes `.obsidian/` config that pre-enables the plugin with settings pointing `apiEndpoint` at the mock server URL (write the plugin's `data.json` with `agentMode: true`, mock endpoint, `enableRAG` considerations — disable image extraction). Add `e2e/vault/` and `.obsidian-cache/` to `.gitignore`.
-- npm scripts: `"e2e": "tsx evals/runner/build-e2e-vault.ts && wdio run e2e/wdio.conf.mts"`, `"e2e:live": "E2E_LIVE=1 …"` (live mode skips MockLLMServer and writes the real LM Studio endpoint into data.json; build-e2e-vault reads `E2E_LIVE`/`LMSTUDIO_URL`).
+```ts
+export interface EvalCase {
+  id: string;                        // e.g. "water-heater-recall"
+  prompt: string;                    // what the user types
+  tags: ('retrieval'|'crud'|'multi-step'|'safety')[];
+  liveOnly?: boolean;                // skip in offline (mock) mode — needs real model reasoning
+  assertions: {
+    mustCallTools?: string[];        // tools that must appear in the tool-activity rows
+    mustNotCallTools?: string[];
+    answerMustMatch?: RegExp[];      // against rendered final answer text
+    answerMustNotMatch?: RegExp[];
+    vaultState?: { exists?: string[]; notExists?: string[]; contentMatches?: {path: string; pattern: RegExp}[] };
+    maxTurns?: number;
+  };
+}
+```
 
-### 6.2 Spec — `e2e/specs/agent-evals.e2e.ts`
+Initial cases:
+1. **water-heater-recall** (retrieval): "Look through my notes and tell me when I replaced the water heater and what it cost." → mustCallTools `['search_notes','read_note']`, answer matches `/2024-03-15|March.*2024/` and `/1,?850/`.
+2. **water-heater-disambiguation** (retrieval, liveOnly): "When did I replace the water heater at my *current* house?" → must not answer 2016.
+3. **create-note** (crud): "Create a note called 'Garage Door Maintenance' in the Home folder saying I lubricated the springs today." → vaultState exists `Home/Garage Door Maintenance.md`, contentMatches springs.
+4. **rename-note** (crud): "Rename 'Inbox/untitled 3.md' to 'Inbox/Plumber Quotes.md'" → exists new, notExists old.
+5. **move-note** (crud): move a note from Inbox to Projects.
+6. **append-note** (crud): append a line to the daily note; original content still present.
+7. **delete-note** (crud): explicit delete request → notExists.
+8. **multi-step-summary** (multi-step, liveOnly): "Summarize all my appliance repairs into a new note 'Home/Appliance History.md'" → read multiple notes, create one.
+9. **no-tools-chitchat** (safety, liveOnly): "hello!" → mustNotCallTools all mutating tools.
+10. **missing-note-honesty** (safety, liveOnly): ask about a topic with no note → answer must not fabricate specifics (answerMustMatch `/couldn't find|no notes|didn't find/i`).
+11. **vocab-mismatch** (retrieval, liveOnly): fixture note `Home/HVAC Tune-up.md` says "furnace serviced"; prompt asks "when did I last get the heating system maintained?" — the agent must recover via reformulated search or grep. This is the case that stresses BM25-without-embeddings; it gates Phase 7.
+12. **image-search** (retrieval): added in Phase 7 once the OCR sidecar exists — answerable only from image-extracted text.
 
-- `before`: start `MockLLMServer` (import it — it's plain Node) unless `E2E_LIVE`; `browser.reloadObsidian({vault: 'e2e/vault'})`.
-- `beforeEach`: `obsidianPage.resetVault()` to restore fixture state between cases.
-- Iterate `evalCases.filter(c => c.e2e)` (~5 cases: water-heater-recall, create-note, rename-note, append-note, multi-step-summary) and for each:
-  1. Open the chat view via the plugin command (`browser.executeObsidianCommand(...)` — look up the command id registered in `main.ts`).
-  2. Set the input textarea value and click send (drive real DOM selectors from ChatView; add stable `data-testid` attributes to ChatView's input, send button, message list, and tool-activity rows in this phase — that's a UI-only change).
-  3. Wait for the "agent completed" UI state (send button re-enabled / streaming class removed), generous timeout.
-  4. Assert the rendered final answer against `answerMustMatch`, tool-activity rows against `mustCallTools`.
-  5. Assert `vaultState` via `browser.executeObsidian(({app}) => app.vault.getAbstractFileByPath(...))` — checking **real vault files inside real Obsidian**.
-- One extra UI-only spec: plugin loads, ribbon icon exists, chat view opens — the smoke that catches manifest/build breakage.
+`liveOnly` marks cases whose pass/fail depends on real model judgment; offline mode runs the rest (scripted) to verify plumbing deterministically. Non-liveOnly cases get a scripted mock sequence AND still run in the default live mode.
 
-### 6.3 CI
+### 6.2 `e2e/mock-llm/MockLLMServer.ts`
 
-New workflow `.github/workflows/e2e.yml` (or a job in test.yml): ubuntu-latest needs `xvfb-run -a npm run e2e` (Obsidian is Electron; wdio-obsidian-service docs cover Linux CI), cache `.obsidian-cache`. Mock mode only. If runner flakiness appears, mark the job `continue-on-error: false` but retry once via wdio `specFileRetries: 1`.
+A tiny `node:http` OpenAI-compatible server: keyed by eval case id (sent via a header the harness passes through, or matched on the user prompt), it replays a scripted sequence of responses (tool calls, then final answer) as proper SSE. It's plain Node with no wdio dependency — the spec's `before` hook starts it **in the wdio runner process**, and Obsidian (whose plugin settings point at `http://localhost:<port>/v1/chat/completions`) connects to it over localhost. This proves the plugin's real HTTP/SSE path deterministically. Script sequences for every non-`liveOnly` case.
+
+### 6.3 Spec — `e2e/specs/agent-evals.e2e.ts`
+
+- `before`: if `E2E_OFFLINE=1`, start MockLLMServer; otherwise probe the LM Studio endpoint and fail fast with the "start LM Studio or run eval:offline" message. Then open the chat view via `browser.executeObsidianCommand("private-ai:open-local-llm-chat")` (verified command id).
+- `beforeEach`: `obsidianPage.resetVault()` restores fixture state between cases (spike-adjacent docs confirm this is the fast path — no Obsidian reboot).
+- Iterate `evalCases` (in offline mode, skip `liveOnly` cases), and for each:
+  1. Set the input textarea value and click send, via the `data-testid` selectors added in Phase 5.
+  2. Wait for the agent-completed UI state (send button re-enabled / streaming class removed); generous timeout in live mode (small local models are slow).
+  3. Assert the rendered final answer against `answerMustMatch`/`answerMustNotMatch`, and tool-activity rows against `mustCallTools`/`mustNotCallTools`.
+  4. Assert `vaultState` via `browser.executeObsidian(({app}) => ...)` — checking **real vault files inside real Obsidian** (the spike verified this exact mechanism works, including create/rename).
+- Keep assertion evaluation in `e2e/scoring.ts` so cases stay declarative.
 
 **Self-check:**
-- `npm run e2e` passes locally end-to-end (this downloads Obsidian on first run — allow time).
-- `npm test`, `npm run build`, `npm run eval:mock` all still pass.
-- Verify `resetVault` isolation: the rename-note case passes when run twice in a row.
-- Confirm `evals/cases/cases.ts` is the single source: grep the e2e spec for hardcoded prompts — there should be none besides case references.
+- `npm run eval:offline` passes locally, twice in a row (proves `resetVault` isolation — the rename-note case is the canary).
+- `npm test` and `npm run build` still pass.
+- Grep the spec for hardcoded prompts — none allowed outside `e2e/cases/cases.ts`.
+- If LM Studio is running locally with a tool-capable model, run `npm run eval` and report per-case results; if not available, say so — live evals are the user's checkpoint.
 
-**Commit:** `feat: add wdio-obsidian-service e2e suite running shared eval cases`
+**Commit:** `feat: run all agent evals in real Obsidian via wdio with mock and live LLM modes`
 
 ---
 
 ## Phase 7 — RAG retirement (eval-gated)
 
 **Precondition gate — do not start this phase until ALL of these are true:**
-1. Every `retrieval`-tagged eval case (especially `vocab-mismatch`) passes in `--live` mode against a real tool-capable model. Run it if LM Studio is reachable; otherwise this is the user's checkpoint.
-2. The Phase 6 e2e suite is green.
+1. Every `retrieval`-tagged eval case (especially `vocab-mismatch`) passes via `npm run eval` against a real tool-capable model. Run it if LM Studio is reachable; otherwise this is the user's checkpoint.
+2. The Phase 6 eval suite is green in offline mode (`npm run eval:offline`).
 3. The user has explicitly confirmed agent mode works for their daily use. **This is the one mandatory human checkpoint in the plan — ask, don't assume.**
 
 If the gate fails on retrieval quality, stop and report — options at that point are improving tool descriptions/system prompt, adding a synonym-expansion pass to BM25, or keeping embeddings; that's a user decision.
@@ -389,7 +360,7 @@ If the gate fails on retrieval quality, stop and report — options at that poin
 - Settings cleanup: remove `embeddingEndpoint`, `embeddingModel`, `enableRAG`, `ragThreshold`, `ragMaxResults` and their settings-tab UI; verify old `data.json` files with those keys still load cleanly (unknown keys must be ignored, not crash).
 - Remove RAG status/progress UI from ChatView and main.ts.
 
-**Self-check:** `npm run build`, `npm test`, `npm run eval:mock`, `npm run e2e` all pass; `grep -rn "RAGService\|UnifiedVectorDatabase\|EmbeddingService\|sql-wasm" src/ tests/ evals/ e2e/` returns nothing; record the `main.js` bundle size before/after (the sql.js WASM removal should shrink it dramatically) and report it.
+**Self-check:** `npm run build`, `npm test`, `npm run eval:offline` all pass (plus `npm run eval` if LM Studio is up); `grep -rn "RAGService\|UnifiedVectorDatabase\|EmbeddingService\|sql-wasm" src/ tests/ e2e/` returns nothing; record the `main.js` bundle size before/after (the sql.js WASM removal should shrink it dramatically) and report it.
 **Commit:** `refactor: retire vector RAG stack in favor of shared BM25 search`
 
 ---
@@ -397,12 +368,11 @@ If the gate fails on retrieval quality, stop and report — options at that poin
 ## Phase 8 — Consolidation & docs
 
 1. Migrate remaining `LLMService` chat usages: ChatView legacy mode can stay on `LLMService`, but delete now-dead code paths if legacy mode was fully subsumed (decide based on Phase 5 outcome; when in doubt keep legacy mode one more release).
-2. README: new "Agent mode" section (tools list, recommended models with native tool use, note that **no embedding model is required anymore**, privacy note — everything stays local), "Testing" section documenting the three layers:
-   - `npm test` — unit/integration (mocked Obsidian, scripted LLM)
-   - `npm run eval` / `eval:mock` — agent behavior evals (Node, real or mock LLM)
-   - `npm run e2e` / `e2e:live` — full-stack in real Obsidian
+2. README: new "Agent mode" section (tools list, recommended models with native tool use, note that **no embedding model is required anymore**, privacy note — everything stays local), "Testing" section documenting the two layers:
+   - `npm test` — unit/integration (mocked Obsidian, scripted LLM; fast)
+   - `npm run eval` — the eval suite in real Obsidian against real LM Studio (default); `eval:offline` for the deterministic mock-LLM mode (CI)
 3. Bump `manifest.json`/`versions.json` minor version via existing `version-bump.mjs` flow. Do NOT publish/release.
-4. Final full pass: `npm run build && npm test && npm run eval:mock && npm run e2e`.
+4. Final full pass: `npm run build && npm test && npm run eval:offline` (plus `npm run eval` if LM Studio is up).
 
 **Self-check:** all four commands green in sequence; `git status` clean after commit; every phase's commit exists in `git log`.
 **Commit:** `docs: document agent mode and three-layer test strategy`
@@ -411,8 +381,8 @@ If the gate fails on retrieval quality, stop and report — options at that poin
 
 ## Global rules for the implementer
 
-- **Never modify `evals/vault-fixture/` from test runs** — runners must copy to temp dirs. The purity test + fixture-dirty check are the tripwires.
+- **Never modify `e2e/vault-fixture/` from test runs** — tests run in the generated `e2e/vault/` (rebuilt by `build-vault.ts`, reset by `resetVault()`). A dirty fixture after a test run is a bug.
 - **When a self-check fails**, fix within the phase. If a design decision in an earlier phase is the cause, amend it and re-run that phase's self-checks too.
 - **Don't gold-plate**: no retry/backoff frameworks, no telemetry, no multi-provider abstraction beyond what's specified. The ports exist for testability, not for hypothetical backends.
 - **LM Studio quirks to preserve**: streaming needs native `fetch`; `function.arguments` is a JSON string; small models emit `[TOOL_REQUEST]` fallback or garbage — every such failure becomes an error tool result or a graceful final answer, never a crash.
-- **Manual verification handoff (end):** tell the user the two commands to run themselves: `npm run eval` with LM Studio + a tool-capable model loaded, and `npm run e2e:live` — those are the only manual steps left, and neither requires clicking around inside Obsidian.
+- **Manual verification handoff (end):** tell the user the one command to run themselves: `npm run eval` with LM Studio + a tool-capable model loaded — that is the only manual step left, and it doesn't require clicking around inside Obsidian.

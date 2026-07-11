@@ -181,3 +181,4 @@ vector-index/image-embeddings.json
 **/text-embeddings.json
 **/image-embeddings.json
 vector-index
+.obsidian-cache/
