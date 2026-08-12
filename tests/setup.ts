@@ -56,3 +56,11 @@ Object.defineProperty(HTMLElement.prototype, 'createDiv', {
   },
   configurable: true
 });
+
+Object.defineProperty(HTMLElement.prototype, 'createSpan', {
+  value(this: HTMLElement, options?: { cls?: string; text?: string }) {
+    return (this as HTMLElement & { createEl: (tag: string, options?: { cls?: string; text?: string }) => HTMLElement })
+      .createEl('span', options);
+  },
+  configurable: true
+});

@@ -1,6 +1,7 @@
 import { Migration } from './migrations/Migration';
 import { Migration001 } from './migrations/001_initial_schema';
 import { LoggingUtility } from '../utils/LoggingUtility';
+import type { Database } from 'sql.js';
 
 export class MigrationRunner {
     private migrations: Migration[] = [];
@@ -15,7 +16,7 @@ export class MigrationRunner {
         this.migrations.sort((a, b) => a.version - b.version);
     }
 
-    async run(db: any, currentVersion: number): Promise<void> {
+    async run(db: Database, currentVersion: number): Promise<void> {
         const pendingMigrations = this.migrations.filter(m => m.version > currentVersion);
 
         if (pendingMigrations.length === 0) {

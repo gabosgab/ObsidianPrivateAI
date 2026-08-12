@@ -1145,6 +1145,10 @@
 	gap: 8px;
 }
 
+.rag-progress-button-hidden {
+	display: none;
+}
+
 .rag-progress-buttons button {
 	padding: 6px 12px;
 	border-radius: 4px;

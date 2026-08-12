@@ -1,10 +1,11 @@
 import { Migration } from './Migration';
 import { LoggingUtility } from '../../utils/LoggingUtility';
+import type { Database } from 'sql.js';
 
 export class Migration001 implements Migration {
     version = 1;
 
-    async up(db: any): Promise<void> {
+    async up(db: Database): Promise<void> {
         LoggingUtility.log('Running Migration 1: Creating initial schema');
 
         // Create the documents table

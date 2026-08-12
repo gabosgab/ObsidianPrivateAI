@@ -6,6 +6,24 @@ import sqlWasm from 'sql.js/dist/sql-wasm.wasm';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MigrationRunner } from './MigrationRunner';
+import type { Database, ParamsObject, Statement } from 'sql.js';
+
+type SourceType = 'markdown' | 'image';
+
+interface StoredVectorRow {
+	id: string;
+	filePath: string;
+	fileName?: string;
+	title: string;
+	paragraphIndex: number;
+	paragraphText: string;
+	fileChecksum: string;
+	lastModified?: number;
+	fileSize?: number;
+	sourceType: SourceType;
+	extractedText: boolean;
+	vector: number[];
+}
 
 export interface VectorDocument {
 	id: string; // unique id for the paragraph (e.g., "file.md#p1" or "image.png#c1")
@@ -30,7 +48,7 @@ export interface VectorSearchResult {
 }
 
 export class UnifiedVectorDatabase {
-	private db: any | null = null;
+	private db: Database | null = null;
 	private dbPath: string;
 	private app: App;
 	private dimension: number = 0;
@@ -57,11 +75,14 @@ export class UnifiedVectorDatabase {
 			// Open database connection
 			// Load WASM file from imported binary (inlined by esbuild)
 			const SQL = await initSqlJs({
-				wasmBinary: sqlWasm
+				wasmBinary: sqlWasm.buffer.slice(
+					sqlWasm.byteOffset,
+					sqlWasm.byteOffset + sqlWasm.byteLength
+				) as ArrayBuffer
 			});
 
 			// Load database if it exists, otherwise create new
-			let dbFile;
+			let dbFile: Buffer | undefined;
 			if (fs.existsSync(this.dbPath)) {
 				dbFile = fs.readFileSync(this.dbPath);
 			}
@@ -105,7 +126,7 @@ export class UnifiedVectorDatabase {
 			if (currentVersion === 0) {
 				const tableCheck = this.db.prepare("SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name='documents'");
 				if (tableCheck.step()) {
-					if (tableCheck.getAsObject().count > 0) {
+					if (Number(tableCheck.getAsObject().count) > 0) {
 						currentVersion = 1;
 						// Mark as version 1
 						this.db.run('INSERT INTO schema_versions (version, migrated_at) VALUES (?, ?)', [1, Date.now()]);
@@ -143,6 +164,10 @@ export class UnifiedVectorDatabase {
 			this.db = null;
 			LoggingUtility.log('Closed unified vector database');
 		}
+	}
+
+	isInitialized(): boolean {
+		return this.db !== null;
 	}
 
 	/**
@@ -252,9 +277,9 @@ export class UnifiedVectorDatabase {
 
 		// Get all documents
 		const stmt = this.db.prepare('SELECT * FROM documents');
-		const rows: any[] = [];
+		const rows: StoredVectorRow[] = [];
 		while (stmt.step()) {
-			rows.push(stmt.getAsObject());
+			rows.push(this.readVectorRow(stmt));
 		}
 		stmt.free();
 
@@ -267,7 +292,7 @@ export class UnifiedVectorDatabase {
 		// Calculate similarities
 		const similarities: VectorSearchResult[] = [];
 		for (const row of rows) {
-			const docVector = JSON.parse(row.vector_json) as number[];
+			const docVector = row.vector;
 			const similarity = this.cosineSimilarity(queryVector, docVector);
 
 			if (similarity >= threshold) {
@@ -275,16 +300,16 @@ export class UnifiedVectorDatabase {
 					id: row.id,
 					vector: docVector,
 					metadata: {
-						filePath: row.file_path,
-						fileName: row.file_name || undefined,
+						filePath: row.filePath,
+						fileName: row.fileName,
 						title: row.title,
-						paragraphIndex: row.paragraph_index,
-						paragraphText: row.paragraph_text,
-						fileChecksum: row.file_checksum,
-						lastModified: row.last_modified || undefined,
-						fileSize: row.file_size || undefined,
-						sourceType: row.source_type,
-						extractedText: row.extracted_text === 1
+						paragraphIndex: row.paragraphIndex,
+						paragraphText: row.paragraphText,
+						fileChecksum: row.fileChecksum,
+						lastModified: row.lastModified,
+						fileSize: row.fileSize,
+						sourceType: row.sourceType,
+						extractedText: row.extractedText
 					}
 				};
 
@@ -415,9 +440,25 @@ export class UnifiedVectorDatabase {
 		return {
 			documentCount: Number(countResult.count),
 			fileCount: Number(fileCountResult.count),
-			lastUpdated: lastUpdatedResult.last_updated ? new Date(lastUpdatedResult.last_updated * 1000) : new Date(),
+			lastUpdated: lastUpdatedResult.last_updated ? new Date(Number(lastUpdatedResult.last_updated) * 1000) : new Date(),
 			sizeInBytes
 		};
+	}
+
+	getSourceStats(): Record<SourceType, { documentCount: number; fileCount: number }> {
+		return {
+			markdown: this.getCountsForSource('markdown'),
+			image: this.getCountsForSource('image')
+		};
+	}
+
+	async deleteDocumentsBySource(sourceType: SourceType): Promise<void> {
+		if (!this.db) {
+			throw new Error('Database not initialized. Call load() first.');
+		}
+
+		this.db.run('DELETE FROM documents WHERE source_type = ?', [sourceType]);
+		await this.save();
 	}
 
 	/**
@@ -434,7 +475,7 @@ export class UnifiedVectorDatabase {
 		const result = stmt.getAsObject();
 		stmt.free();
 
-		return result.count > 0;
+		return Number(result.count) > 0;
 	}
 
 	/**
@@ -447,26 +488,26 @@ export class UnifiedVectorDatabase {
 
 		const stmt = this.db.prepare('SELECT * FROM documents WHERE file_path = ? ORDER BY paragraph_index');
 		stmt.bind([filePath]);
-		const rows: any[] = [];
+		const rows: StoredVectorRow[] = [];
 		while (stmt.step()) {
-			rows.push(stmt.getAsObject());
+			rows.push(this.readVectorRow(stmt));
 		}
 		stmt.free();
 
-		return rows.map((row: any) => ({
+		return rows.map((row) => ({
 			id: row.id,
-			vector: JSON.parse(row.vector_json) as number[],
+			vector: row.vector,
 			metadata: {
-				filePath: row.file_path,
-				fileName: row.file_name || undefined,
+				filePath: row.filePath,
+				fileName: row.fileName,
 				title: row.title,
-				paragraphIndex: row.paragraph_index,
-				paragraphText: row.paragraph_text,
-				fileChecksum: row.file_checksum,
-				lastModified: row.last_modified || undefined,
-				fileSize: row.file_size || undefined,
-				sourceType: row.source_type,
-				extractedText: row.extracted_text === 1
+				paragraphIndex: row.paragraphIndex,
+				paragraphText: row.paragraphText,
+				fileChecksum: row.fileChecksum,
+				lastModified: row.lastModified,
+				fileSize: row.fileSize,
+				sourceType: row.sourceType,
+				extractedText: row.extractedText
 			}
 		}));
 	}
@@ -480,26 +521,26 @@ export class UnifiedVectorDatabase {
 		}
 
 		const stmt = this.db.prepare('SELECT * FROM documents');
-		const rows: any[] = [];
+		const rows: StoredVectorRow[] = [];
 		while (stmt.step()) {
-			rows.push(stmt.getAsObject());
+			rows.push(this.readVectorRow(stmt));
 		}
 		stmt.free();
 
-		return rows.map((row: any) => ({
+		return rows.map((row) => ({
 			id: row.id,
-			vector: JSON.parse(row.vector_json) as number[],
+			vector: row.vector,
 			metadata: {
-				filePath: row.file_path,
-				fileName: row.file_name || undefined,
+				filePath: row.filePath,
+				fileName: row.fileName,
 				title: row.title,
-				paragraphIndex: row.paragraph_index,
-				paragraphText: row.paragraph_text,
-				fileChecksum: row.file_checksum,
-				lastModified: row.last_modified || undefined,
-				fileSize: row.file_size || undefined,
-				sourceType: row.source_type,
-				extractedText: row.extracted_text === 1
+				paragraphIndex: row.paragraphIndex,
+				paragraphText: row.paragraphText,
+				fileChecksum: row.fileChecksum,
+				lastModified: row.lastModified,
+				fileSize: row.fileSize,
+				sourceType: row.sourceType,
+				extractedText: row.extractedText
 			}
 		}));
 	}
@@ -507,7 +548,7 @@ export class UnifiedVectorDatabase {
 	/**
 	 * Check if a file needs to be updated based on checksum
 	 */
-	fileNeedsUpdate(filePath: string, checksum: string, lastModified: number, size: number): boolean {
+	fileNeedsUpdate(filePath: string, checksum: string): boolean {
 		const fileDocuments = this.getFileDocuments(filePath);
 
 		if (fileDocuments.length === 0) {
@@ -526,7 +567,7 @@ export class UnifiedVectorDatabase {
 		const needsUpdate: string[] = [];
 
 		for (const [filePath, stats] of fileStats) {
-			if (this.fileNeedsUpdate(filePath, stats.checksum, stats.lastModified, stats.size)) {
+			if (this.fileNeedsUpdate(filePath, stats.checksum)) {
 				needsUpdate.push(filePath);
 			}
 		}
@@ -544,19 +585,19 @@ export class UnifiedVectorDatabase {
 
 		// Get all file paths from database
 		const stmt = this.db.prepare('SELECT DISTINCT file_path FROM documents');
-		const rows: any[] = [];
+		const rows: string[] = [];
 		while (stmt.step()) {
-			rows.push(stmt.getAsObject());
+			rows.push(String(stmt.getAsObject().file_path));
 		}
 		stmt.free();
 
-		const dbFilePaths = new Set(rows.map((row: any) => row.file_path));
+		const dbFilePaths = new Set(rows);
 
 		// Find files that exist in database but not in file system
 		const filesToRemove: string[] = [];
 		for (const dbFilePath of dbFilePaths) {
-			if (!existingFiles.has(dbFilePath as string)) {
-				filesToRemove.push(dbFilePath as string);
+			if (!existingFiles.has(dbFilePath)) {
+				filesToRemove.push(dbFilePath);
 			}
 		}
 
@@ -591,5 +632,54 @@ export class UnifiedVectorDatabase {
 			const buffer = Buffer.from(data);
 			fs.writeFileSync(this.dbPath, buffer);
 		}
+	}
+
+	private getCountsForSource(sourceType: SourceType): { documentCount: number; fileCount: number } {
+		if (!this.db) {
+			throw new Error('Database not initialized. Call load() first.');
+		}
+
+		const statement = this.db.prepare(`
+			SELECT COUNT(*) AS document_count, COUNT(DISTINCT file_path) AS file_count
+			FROM documents
+			WHERE source_type = ?
+		`);
+		statement.bind([sourceType]);
+		statement.step();
+		const row = statement.getAsObject();
+		statement.free();
+
+		return {
+			documentCount: Number(row.document_count),
+			fileCount: Number(row.file_count)
+		};
+	}
+
+	private readVectorRow(statement: Statement): StoredVectorRow {
+		const row: ParamsObject = statement.getAsObject();
+		const sourceType = String(row.source_type);
+		if (sourceType !== 'markdown' && sourceType !== 'image') {
+			throw new Error(`Unexpected document source type: ${sourceType}`);
+		}
+
+		const vector = JSON.parse(String(row.vector_json)) as unknown;
+		if (!Array.isArray(vector) || !vector.every((value) => typeof value === 'number')) {
+			throw new Error('Stored document vector is invalid.');
+		}
+
+		return {
+			id: String(row.id),
+			filePath: String(row.file_path),
+			fileName: row.file_name == null ? undefined : String(row.file_name),
+			title: String(row.title),
+			paragraphIndex: Number(row.paragraph_index),
+			paragraphText: String(row.paragraph_text),
+			fileChecksum: String(row.file_checksum),
+			lastModified: row.last_modified == null ? undefined : Number(row.last_modified),
+			fileSize: row.file_size == null ? undefined : Number(row.file_size),
+			sourceType,
+			extractedText: Number(row.extracted_text) === 1,
+			vector
+		};
 	}
 }

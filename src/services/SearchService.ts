@@ -1,6 +1,6 @@
-import { App, TFile, CachedMetadata, getAllTags, MarkdownView } from 'obsidian';
+import { App, TFile, CachedMetadata, MarkdownView } from 'obsidian';
 import { LoggingUtility } from '../utils/LoggingUtility';
-import { RAGService, RAGSearchResult } from './RAGService';
+import { RAGService } from './RAGService';
 
 export interface SearchResult {
 	file: TFile;
@@ -257,8 +257,9 @@ export class SearchService {
 	 */
 	private getFileTitle(file: TFile, metadata: CachedMetadata | null): string {
 		// Try to get title from frontmatter
-		if (metadata?.frontmatter?.title) {
-			return metadata.frontmatter.title;
+		const title: unknown = metadata?.frontmatter?.title;
+		if (typeof title === 'string') {
+			return title;
 		}
 		
 		// Try to get title from first heading

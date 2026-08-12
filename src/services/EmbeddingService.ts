@@ -1,5 +1,6 @@
 import { LoggingUtility } from '../utils/LoggingUtility';
 import { requestUrl } from 'obsidian';
+import { getErrorMessage } from '../utils/ErrorUtils';
 
 interface EmbeddingRequest {
 	input: string | string[];
@@ -81,7 +82,7 @@ export class EmbeddingService {
 
 		} catch (error) {
 			LoggingUtility.error('Error generating embedding:', error);
-			throw new Error(`Failed to generate embedding: ${error.message}`);
+			throw new Error(`Failed to generate embedding: ${getErrorMessage(error)}`);
 		}
 	}
 
@@ -126,7 +127,7 @@ export class EmbeddingService {
 
 		} catch (error) {
 			LoggingUtility.error('Error generating embeddings:', error);
-			throw new Error(`Failed to generate embeddings: ${error.message}`);
+			throw new Error(`Failed to generate embeddings: ${getErrorMessage(error)}`);
 		}
 	}
 
@@ -147,7 +148,7 @@ export class EmbeddingService {
 			LoggingUtility.error('Embedding connection test failed:', error);
 			return { 
 				success: false, 
-				error: error.message 
+				error: getErrorMessage(error)
 			};
 		}
 	}

@@ -1,12 +1,13 @@
-import { App, TFile, EventRef, Events, Notice, ProgressBarComponent, Plugin, FileSystemAdapter, PluginManifest } from 'obsidian';
-import { UnifiedVectorDatabase, VectorSearchResult, VectorDocument } from '../db/UnifiedVectorDatabase';
+import { App, CachedMetadata, TFile, EventRef, Notice, FileSystemAdapter, MarkdownView, PluginManifest, WorkspaceLeaf } from 'obsidian';
+import { UnifiedVectorDatabase } from '../db/UnifiedVectorDatabase';
 import { LoggingUtility } from '../utils/LoggingUtility';
-import { SearchResult } from './SearchService';
 import { EmbeddingService, EmbeddingConfig } from './EmbeddingService';
 import { ImageTextExtractor } from './ImageTextExtractor';
 import * as CRC32 from 'crc-32';
 import * as path from 'path';
-import { SettingsManager, LocalLLMSettings } from './SettingsManager';
+import { LocalLLMSettings } from './SettingsManager';
+import type { LLMService } from './LLMService';
+import { getErrorMessage } from '../utils/ErrorUtils';
 
 
 export interface RAGSearchResult {
@@ -64,10 +65,10 @@ export class RAGService {
 	private indexingAbortController?: AbortController;
 	private progressCallback?: ProgressCallback;
 	private initOptions: RAGInitializationOptions;
-	private fileUpdateQueue: Map<string, NodeJS.Timeout> = new Map();
+	private fileUpdateQueue: Map<string, number> = new Map();
 	private isProcessingFileUpdates: boolean = false;
 	private pendingActiveFileUpdates: Set<string> = new Set();
-	private activeFileCheckInterval?: NodeJS.Timeout;
+	private activeFileCheckInterval?: number;
 	private lastActiveFilePath: string | null = null;
 	private settings: LocalLLMSettings;
 	private imageProcessingEnabled: boolean = false;
@@ -271,7 +272,7 @@ export class RAGService {
 	/**
 	 * Initialize the image text extractor with LLM service
 	 */
-	initializeImageTextExtractor(llmService: any): void {
+	initializeImageTextExtractor(llmService: LLMService): void {
 		try {
 			LoggingUtility.log('Initializing image text extractor...');
 			this.imageTextExtractor = new ImageTextExtractor(llmService, this.app);
@@ -404,7 +405,7 @@ export class RAGService {
 
 					// Yield control periodically
 					if (i % 3 === 0) {
-						await new Promise(resolve => setTimeout(resolve, 0));
+						await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 					}
 
 				} catch (error) {
@@ -502,7 +503,7 @@ export class RAGService {
 
 					if (this.initOptions.backgroundIndexing) {
 						// Run in background without blocking initialization
-						this.runBackgroundMaintenance(MaintenanceOperation.REBUILD);
+						void this.runBackgroundMaintenance(MaintenanceOperation.REBUILD);
 					} else {
 						// Run synchronously
 						await this.forceRebuildIndex(this.createAutoMaintenanceProgressCallback());
@@ -512,7 +513,7 @@ export class RAGService {
 
 					if (this.initOptions.backgroundIndexing) {
 						// Run in background without blocking initialization
-						this.runBackgroundMaintenance(MaintenanceOperation.UPDATE);
+						void this.runBackgroundMaintenance(MaintenanceOperation.UPDATE);
 					} else {
 						// Run synchronously
 						await this.buildIndex(this.createAutoMaintenanceProgressCallback());
@@ -563,7 +564,8 @@ export class RAGService {
 	 */
 	private async runBackgroundMaintenance(operation: MaintenanceOperation): Promise<void> {
 		// Use setTimeout to run in background without blocking
-		setTimeout(async () => {
+		activeWindow.setTimeout(() => {
+			void (async () => {
 			try {
 				const progressCallback = this.createAutoMaintenanceProgressCallback();
 
@@ -581,13 +583,15 @@ export class RAGService {
 				LoggingUtility.error(`Background maintenance (${operation}) failed:`, error);
 				if (!this.initOptions.silentMode) {
 					// Check if it's a connection error and show appropriate message
-					if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+					const errorMessage = getErrorMessage(error);
+					if (errorMessage.includes('Could not establish connection to LM Studio')) {
 						new Notice(`RAG database ${operation} failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.`, 10000);
 					} else {
-						new Notice(`RAG database ${operation} failed: ${error.message}`, 8000);
+						new Notice(`RAG database ${operation} failed: ${errorMessage}`, 8000);
 					}
 				}
 			}
+			})();
 		}, 100); // Small delay to ensure UI is ready
 	}
 
@@ -899,7 +903,7 @@ export class RAGService {
 
 					// Yield control periodically
 					if (i % 5 === 0) {
-						await new Promise(resolve => setTimeout(resolve, 0));
+						await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 					}
 
 				} catch (error) {
@@ -942,18 +946,8 @@ export class RAGService {
 	 */
 	private isFileCurrentlyActive(file: TFile): boolean {
 		try {
-			const activeLeaf = this.app.workspace.activeLeaf;
-			if (!activeLeaf || !activeLeaf.view) {
-				return false;
-			}
-
-			// Check if the active view is a markdown view with this file
-			if (activeLeaf.view.getViewType() === 'markdown') {
-				const activeFile = (activeLeaf.view as any).file;
-				return activeFile && activeFile.path === file.path;
-			}
-
-			return false;
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			return activeView?.file?.path === file.path;
 		} catch (error) {
 			LoggingUtility.error('Error checking if file is active:', error);
 			return false; // Err on the side of processing if we can't detect
@@ -987,7 +981,7 @@ export class RAGService {
 		});
 
 		// Watch for file renames
-		this.fileRenameRef = this.app.vault.on('rename', async (file, oldPath) => {
+		this.fileRenameRef = this.app.vault.on('rename', (file, oldPath) => {
 			if (file instanceof TFile && file.extension.toLowerCase() === 'md' && !this.isIndexing) {
 				// Renames should always be processed as they don't interfere with editing
 				this.queueFileUpdate(file, 'rename', oldPath);
@@ -995,13 +989,14 @@ export class RAGService {
 		});
 
 		// Watch for file deletions
-		this.fileDeleteRef = this.app.vault.on('delete', async (file) => {
+		this.fileDeleteRef = this.app.vault.on('delete', (file) => {
 			if (file instanceof TFile && file.extension.toLowerCase() === 'md' && !this.isIndexing) {
 				// Remove from pending updates if it was there
 				this.pendingActiveFileUpdates.delete(file.path);
 
 				// Process deletions immediately as they're quick and file is gone
-				setTimeout(async () => {
+				activeWindow.setTimeout(() => {
+					void (async () => {
 					try {
 						LoggingUtility.log(`File deleted: ${file.path}`);
 						await this.vectorDB.removeFileDocuments(file.path);
@@ -1009,6 +1004,7 @@ export class RAGService {
 					} catch (error) {
 						LoggingUtility.error(`Error processing file deletion: ${file.path}`, error);
 					}
+					})();
 				}, 0);
 			}
 		});
@@ -1030,7 +1026,7 @@ export class RAGService {
 	/**
 	 * Handle when the active leaf changes (user switches notes)
 	 */
-	private handleActiveLeafChange(leaf: any): void {
+	private handleActiveLeafChange(_leaf: WorkspaceLeaf | null): void {
 		try {
 			// Get the file that was previously active
 			const previousActiveFile = this.lastActiveFilePath;
@@ -1046,7 +1042,7 @@ export class RAGService {
 					this.pendingActiveFileUpdates.delete(previousActiveFile);
 
 					// Process immediately since the file is no longer active
-					setTimeout(() => {
+					activeWindow.setTimeout(() => {
 						this.queueFileUpdate(file, 'modify');
 					}, 100); // Small delay to ensure the switch is complete
 				}
@@ -1061,13 +1057,8 @@ export class RAGService {
 	 */
 	private updateLastActiveFile(): void {
 		try {
-			const activeLeaf = this.app.workspace.activeLeaf;
-			if (activeLeaf && activeLeaf.view && activeLeaf.view.getViewType() === 'markdown') {
-				const activeFile = (activeLeaf.view as any).file;
-				this.lastActiveFilePath = activeFile ? activeFile.path : null;
-			} else {
-				this.lastActiveFilePath = null;
-			}
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			this.lastActiveFilePath = activeView?.file?.path ?? null;
 		} catch (error) {
 			LoggingUtility.error('Error updating last active file:', error);
 			this.lastActiveFilePath = null;
@@ -1079,9 +1070,9 @@ export class RAGService {
 	 */
 	private startActiveFileMonitoring(): void {
 		// Check every 30 seconds for files that need processing (reduced frequency since we have immediate processing)
-		this.activeFileCheckInterval = setInterval(() => {
+		this.activeFileCheckInterval = activeWindow.setInterval(() => {
 			if (this.pendingActiveFileUpdates.size > 0) {
-				this.processPendingActiveFiles();
+				void this.processPendingActiveFiles();
 			}
 		}, 30000); // 30 second interval (was 10 seconds)
 	}
@@ -1129,13 +1120,13 @@ export class RAGService {
 
 		// Clear any pending file update timers
 		for (const timeout of this.fileUpdateQueue.values()) {
-			clearTimeout(timeout);
+			activeWindow.clearTimeout(timeout);
 		}
 		this.fileUpdateQueue.clear();
 
 		// Clear active file monitoring
 		if (this.activeFileCheckInterval) {
-			clearInterval(this.activeFileCheckInterval);
+			activeWindow.clearInterval(this.activeFileCheckInterval);
 			this.activeFileCheckInterval = undefined;
 		}
 		this.pendingActiveFileUpdates.clear();
@@ -1152,11 +1143,12 @@ export class RAGService {
 
 		// Clear existing timeout for this file if it exists
 		if (this.fileUpdateQueue.has(filePath)) {
-			clearTimeout(this.fileUpdateQueue.get(filePath)!);
+			activeWindow.clearTimeout(this.fileUpdateQueue.get(filePath));
 		}
 
 		// Set new timeout to process the file update after a brief delay
-		const timeout = setTimeout(async () => {
+		const timeout = activeWindow.setTimeout(() => {
+			void (async () => {
 			try {
 				this.fileUpdateQueue.delete(filePath);
 
@@ -1175,6 +1167,7 @@ export class RAGService {
 			} catch (error) {
 				LoggingUtility.error(`Error processing file update for ${filePath}:`, error);
 			}
+			})();
 		}, 500); // 500ms debounce delay
 
 		this.fileUpdateQueue.set(filePath, timeout);
@@ -1193,7 +1186,7 @@ export class RAGService {
 		// Prevent overlapping background updates
 		if (this.isProcessingFileUpdates) {
 			// Re-queue for later processing
-			setTimeout(() => {
+			activeWindow.setTimeout(() => {
 				this.queueFileUpdate(file, operation, oldPath);
 			}, 1000);
 			return;
@@ -1237,7 +1230,7 @@ export class RAGService {
 			}
 
 			// Yield control periodically during processing
-			await new Promise(resolve => setTimeout(resolve, 0));
+			await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 
 		} finally {
 			this.isProcessingFileUpdates = false;
@@ -1409,7 +1402,7 @@ export class RAGService {
 					this.progressCallback(0, 0, `Connection issue detected, retrying automatically (${attempt + 1}/${autoRetryDelaysMs.length})...`);
 				}
 
-				await new Promise(resolve => setTimeout(resolve, autoRetryDelaysMs[attempt]));
+				await new Promise(resolve => activeWindow.setTimeout(resolve, autoRetryDelaysMs[attempt]));
 
 				const connectionTest = await this.testEmbeddingConnection();
 				if (connectionTest.success) {
@@ -1506,7 +1499,7 @@ export class RAGService {
 
 				// Yield control periodically
 				if (i % 10 === 0) {
-					await new Promise(resolve => setTimeout(resolve, 0));
+					await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 				}
 			}
 
@@ -1552,7 +1545,7 @@ export class RAGService {
 
 					// Yield control periodically during chunk counting
 					if (i % 10 === 0) {
-						await new Promise(resolve => setTimeout(resolve, 0));
+						await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 					}
 				}
 
@@ -1606,7 +1599,7 @@ export class RAGService {
 
 						// Yield control to the UI thread every few files to keep Obsidian responsive
 						if (i % 3 === 0) {
-							await new Promise(resolve => setTimeout(resolve, 0));
+							await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 						}
 					}
 				}
@@ -1746,7 +1739,7 @@ export class RAGService {
 
 							// Yield control periodically
 							if (i % 3 === 0) {
-								await new Promise(resolve => setTimeout(resolve, 0));
+								await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 							}
 
 						} catch (error) {
@@ -1780,10 +1773,11 @@ export class RAGService {
 		} catch (error) {
 			LoggingUtility.error('Error during indexing:', error);
 			// Check if it's a connection error and show appropriate message
-			if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+			const errorMessage = getErrorMessage(error);
+			if (errorMessage.includes('Could not establish connection to LM Studio')) {
 				new Notice('RAG indexing failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.', 10000);
 			} else {
-				new Notice('Error during RAG indexing: ' + error.message, 8000);
+				new Notice('Error during RAG indexing: ' + errorMessage, 8000);
 			}
 		} finally {
 			this.clearEmbeddingPauseState();
@@ -1838,12 +1832,12 @@ export class RAGService {
 
 		// 3. Clear any pending timeouts
 		for (const timeout of this.fileUpdateQueue.values()) {
-			clearTimeout(timeout);
+			activeWindow.clearTimeout(timeout);
 		}
 		this.fileUpdateQueue.clear();
 
 		if (this.activeFileCheckInterval) {
-			clearInterval(this.activeFileCheckInterval);
+			activeWindow.clearInterval(this.activeFileCheckInterval);
 			this.activeFileCheckInterval = undefined;
 		}
 
@@ -1912,7 +1906,7 @@ export class RAGService {
 
 				// Yield control periodically during chunk counting
 				if (i % 10 === 0) {
-					await new Promise(resolve => setTimeout(resolve, 0));
+					await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 				}
 			}
 
@@ -1957,7 +1951,7 @@ export class RAGService {
 
 				// Yield control to the UI thread every few files to keep Obsidian responsive
 				if (i % 3 === 0) {
-					await new Promise(resolve => setTimeout(resolve, 0));
+					await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 				}
 			}
 
@@ -2057,7 +2051,7 @@ export class RAGService {
 
 							// Yield control periodically
 							if (i % 3 === 0) {
-								await new Promise(resolve => setTimeout(resolve, 0));
+								await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 							}
 
 						} catch (error) {
@@ -2088,10 +2082,11 @@ export class RAGService {
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);
 			// Check if it's a connection error and show appropriate message
-			if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+			const errorMessage = getErrorMessage(error);
+			if (errorMessage.includes('Could not establish connection to LM Studio')) {
 				new Notice('RAG complete rebuild failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.', 10000);
 			} else {
-				new Notice('Error during RAG complete rebuild: ' + error.message, 8000);
+				new Notice('Error during RAG complete rebuild: ' + errorMessage, 8000);
 			}
 		} finally {
 			this.clearEmbeddingPauseState();
@@ -2125,11 +2120,8 @@ export class RAGService {
 
 			// Clear existing markdown documents, but preserve image documents for checksum checking
 			// We'll delete only markdown documents to preserve image checksums
-			const db = (this.vectorDB as any).db;
-			if (db) {
-				db.prepare('DELETE FROM documents WHERE source_type = ?').run('markdown');
-				LoggingUtility.log('Cleared markdown documents for rebuild, preserving image documents for checksum checking');
-			}
+			await this.vectorDB.deleteDocumentsBySource('markdown');
+			LoggingUtility.log('Cleared markdown documents for rebuild, preserving image documents for checksum checking');
 
 			// Get all markdown files that are not excluded
 			const files = this.getIncludedMarkdownFiles();
@@ -2160,7 +2152,7 @@ export class RAGService {
 
 				// Yield control periodically during chunk counting
 				if (i % 10 === 0) {
-					await new Promise(resolve => setTimeout(resolve, 0));
+					await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 				}
 			}
 
@@ -2198,7 +2190,7 @@ export class RAGService {
 
 				// Yield control to the UI thread every few files to keep Obsidian responsive
 				if (i % 3 === 0) {
-					await new Promise(resolve => setTimeout(resolve, 0));
+					await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 				}
 			}
 
@@ -2303,7 +2295,7 @@ export class RAGService {
 
 							// Yield control periodically
 							if (i % 3 === 0) {
-								await new Promise(resolve => setTimeout(resolve, 0));
+								await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 							}
 
 						} catch (error) {
@@ -2334,10 +2326,11 @@ export class RAGService {
 		} catch (error) {
 			LoggingUtility.error('Error during complete rebuild:', error);
 			// Check if it's a connection error and show appropriate message
-			if (error.message && error.message.includes('Could not establish connection to LM Studio')) {
+			const errorMessage = getErrorMessage(error);
+			if (errorMessage.includes('Could not establish connection to LM Studio')) {
 				new Notice('RAG complete rebuild failed: Cannot connect to LM Studio. Please ensure LM Studio is running with an embedding model loaded.', 10000);
 			} else {
-				new Notice('Error during RAG complete rebuild: ' + error.message, 8000);
+				new Notice('Error during RAG complete rebuild: ' + errorMessage, 8000);
 			}
 		} finally {
 			this.clearEmbeddingPauseState();
@@ -2411,14 +2404,14 @@ export class RAGService {
 			}
 
 			// Yield control briefly before starting embedding generation
-			await new Promise(resolve => setTimeout(resolve, 0));
+			await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 
 			// Generate embeddings for all chunks
 			const texts = chunks.map(c => c.text);
 			const embeddings = await this.generateEmbeddings(texts);
 
 			// Yield control after embedding generation
-			await new Promise(resolve => setTimeout(resolve, 0));
+			await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 
 			// Create chunk documents
 			const chunkDocuments = chunks.map((chunk, index) => ({
@@ -2481,7 +2474,7 @@ export class RAGService {
 
 				// Yield control briefly before each embedding generation
 				if (i % 5 === 0) {
-					await new Promise(resolve => setTimeout(resolve, 0));
+					await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
 				}
 
 				// Generate embedding for this chunk
@@ -2590,9 +2583,10 @@ export class RAGService {
 	/**
 	 * Get file title from metadata
 	 */
-	private getFileTitle(file: TFile, metadata: any): string {
-		if (metadata?.frontmatter?.title) {
-			return metadata.frontmatter.title;
+	private getFileTitle(file: TFile, metadata: CachedMetadata | null): string {
+		const title: unknown = metadata?.frontmatter?.title;
+		if (typeof title === 'string') {
+			return title;
 		}
 		if (metadata?.headings && metadata.headings.length > 0) {
 			return metadata.headings[0].heading;
@@ -2666,8 +2660,7 @@ export class RAGService {
 		markdownFiles: number;
 		imageFiles: number;
 	} {
-		const db = (this.vectorDB as any)?.db;
-		if (!db) {
+		if (!this.vectorDB.isInitialized()) {
 			return this.createEmptyStats();
 		}
 
@@ -2679,39 +2672,17 @@ export class RAGService {
 			return this.createEmptyStats();
 		}
 
-		// Get breakdown by source type
-		if (!this.vectorDB) {
-			return this.createEmptyStats();
-		}
-
-		// Get counts by source type from database
-		if (!db) {
-			return {
-				documentCount: stats.documentCount,
-				fileCount: stats.fileCount,
-				lastUpdated: stats.lastUpdated,
-				sizeInBytes: stats.sizeInBytes,
-				markdownDocuments: 0,
-				imageDocuments: 0,
-				markdownFiles: 0,
-				imageFiles: 0
-			};
-		}
-
-		const markdownCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
-		const imageCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
-		const markdownFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
-		const imageFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
+		const sourceStats = this.vectorDB.getSourceStats();
 
 		return {
 			documentCount: stats.documentCount,
 			fileCount: stats.fileCount,
 			lastUpdated: stats.lastUpdated,
 			sizeInBytes: stats.sizeInBytes,
-			markdownDocuments: markdownCount.count,
-			imageDocuments: imageCount.count,
-			markdownFiles: markdownFileCount.count,
-			imageFiles: imageFileCount.count
+			markdownDocuments: sourceStats.markdown.documentCount,
+			imageDocuments: sourceStats.image.documentCount,
+			markdownFiles: sourceStats.markdown.fileCount,
+			imageFiles: sourceStats.image.fileCount
 		};
 	}
 
@@ -2765,29 +2736,25 @@ export class RAGService {
 		totalFiles: number;
 	} {
 		const stats = this.getStats();
-		const isInitialized = !!(this.vectorDB as any)?.db;
+		const isInitialized = this.vectorDB.isInitialized();
 
 		// Get breakdown by source type
-		const db = (this.vectorDB as any).db;
 		let textStats = { documentCount: 0, fileCount: 0, lastUpdated: stats.lastUpdated, sizeInBytes: 0 };
 		let imageStats = { documentCount: 0, fileCount: 0, lastUpdated: stats.lastUpdated, sizeInBytes: 0 };
 
-		if (db) {
-			const markdownCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
-			const imageCount = db.prepare('SELECT COUNT(*) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
-			const markdownFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('markdown') as { count: number };
-			const imageFileCount = db.prepare('SELECT COUNT(DISTINCT file_path) as count FROM documents WHERE source_type = ?').get('image') as { count: number };
+		if (isInitialized) {
+			const sourceStats = this.vectorDB.getSourceStats();
 
 			textStats = {
-				documentCount: markdownCount.count,
-				fileCount: markdownFileCount.count,
+				documentCount: sourceStats.markdown.documentCount,
+				fileCount: sourceStats.markdown.fileCount,
 				lastUpdated: stats.lastUpdated,
 				sizeInBytes: 0 // Size breakdown not easily available
 			};
 
 			imageStats = {
-				documentCount: imageCount.count,
-				fileCount: imageFileCount.count,
+				documentCount: sourceStats.image.documentCount,
+				fileCount: sourceStats.image.fileCount,
 				lastUpdated: stats.lastUpdated,
 				sizeInBytes: 0 // Size breakdown not easily available
 			};

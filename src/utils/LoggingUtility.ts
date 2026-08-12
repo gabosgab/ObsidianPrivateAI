@@ -10,15 +10,13 @@ export class LoggingUtility {
 		LoggingUtility.developerLoggingEnabled = enabled;
 	}
 
-	static log(...args: any[]) {
-		// If plugin is not initialized, default to logging (for early initialization/unload)
-		// Or if settings are not yet loaded, or if developer logging is enabled
+	static log(...args: unknown[]): void {
 		if (LoggingUtility.isDeveloperLoggingEnabled()) {
-			console.log(...args);
+			window.console.log(...args);
 		}
 	}
 
-	static warn(...args: any[]) {
+	static warn(...args: unknown[]) {
 		// If plugin is not initialized, default to logging (for early initialization/unload)
 		// Or if settings are not yet loaded, or if developer logging is enabled
 		if (LoggingUtility.isDeveloperLoggingEnabled()) {
@@ -26,7 +24,7 @@ export class LoggingUtility {
 		}
 	}
 
-	static error(...args: any[]) {
+	static error(...args: unknown[]) {
 		// Always log errors regardless of developer logging setting or plugin initialization
 		console.error(...args);
 	}

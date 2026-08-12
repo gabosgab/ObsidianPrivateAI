@@ -1,9 +1,11 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, Notice } from 'obsidian';
+import { App, DropdownComponent, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice } from 'obsidian';
 import { ChatView } from './views/ChatView';
 import { LoggingUtility } from './utils/LoggingUtility';
 import { RAGService } from './services/RAGService';
 import '../styles.css';
 import manifest from '../manifest.json';
+import type { LLMService } from './services/LLMService';
+import { getErrorMessage } from './utils/ErrorUtils';
 
 export const CHAT_VIEW_TYPE = 'local-llm-chat-view';
 
@@ -95,11 +97,18 @@ const REVIEW_PROMPT_MESSAGE = 'Enjoying Private AI? A quick review helps others 
 export default class LocalLLMPlugin extends Plugin {
 	settings: LocalLLMSettings;
 	ragService: RAGService;
-	private llmService: any; // LLMService instance for image processing
+	private llmService: LLMService;
 	private usageTrackingIntervalId: number | null = null;
 	private reviewPromptPending = false;
 
-	async onload() {
+	onload(): void {
+		void this.loadPlugin().catch((error: unknown) => {
+			LoggingUtility.error('Failed to load Private AI:', error);
+			new Notice('Private AI failed to initialize. Check the developer console for details.');
+		});
+	}
+
+	private async loadPlugin(): Promise<void> {
 		LoggingUtility.initialize();
 
 		await this.loadSettings();
@@ -139,11 +148,8 @@ export default class LocalLLMPlugin extends Plugin {
 		this.ragService.initializeImageTextExtractor(this.llmService);
 
 		// Defer RAG initialization until layout is ready to ensure vault cache is populated
-		this.app.workspace.onLayoutReady(async () => {
-			await this.ragService.initialize(this.settings);
-
-			// Always start file watcher since RAG is always enabled
-			this.ragService.startFileWatcher();
+		this.app.workspace.onLayoutReady(() => {
+			void this.initializeRagService();
 		});
 
 		// Register the view
@@ -154,7 +160,7 @@ export default class LocalLLMPlugin extends Plugin {
 
 		// Add ribbon icon to open chat
 		this.addRibbonIcon('sparkles', 'Open private AI', () => {
-			this.activateView();
+			void this.activateView();
 		});
 
 		// Add command to open chat
@@ -162,7 +168,7 @@ export default class LocalLLMPlugin extends Plugin {
 			id: 'open-local-llm-chat',
 			name: 'Open',
 			callback: () => {
-				this.activateView();
+				void this.activateView();
 			}
 		});
 
@@ -188,7 +194,11 @@ export default class LocalLLMPlugin extends Plugin {
 		this.addSettingTab(new LocalLLMSettingTab(this.app, this));
 	}
 
-	async onunload() {
+	onunload(): void {
+		void this.unloadPlugin();
+	}
+
+	private async unloadPlugin(): Promise<void> {
 		LoggingUtility.log('Unloading Private AI Chat plugin');
 
 		await this.flushUsageTracking();
@@ -199,11 +209,25 @@ export default class LocalLLMPlugin extends Plugin {
 		}
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	private async initializeRagService(): Promise<void> {
+		try {
+			await this.ragService.initialize(this.settings);
+			this.ragService.startFileWatcher();
+		} catch (error) {
+			LoggingUtility.error('Failed to initialize semantic search:', error);
+			new Notice('Private AI could not initialize semantic search.');
+		}
 	}
 
-	async saveSettings() {
+	async loadSettings(): Promise<void> {
+		const loadedData = await (this.loadData() as Promise<unknown>);
+		const settings = typeof loadedData === 'object' && loadedData !== null
+			? loadedData as Partial<LocalLLMSettings>
+			: {};
+		this.settings = { ...DEFAULT_SETTINGS, ...settings };
+	}
+
+	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 
 		// Update developer logging setting
@@ -244,7 +268,7 @@ export default class LocalLLMPlugin extends Plugin {
 			this.settings.lastUsageStartTimestamp = Date.now();
 		}
 
-		this.usageTrackingIntervalId = window.setInterval(() => {
+		this.usageTrackingIntervalId = activeWindow.setInterval(() => {
 			void this.updateUsageAndMaybeShowReviewPrompt();
 		}, 60 * 1000);
 		this.registerInterval(this.usageTrackingIntervalId);
@@ -411,13 +435,15 @@ export default class LocalLLMPlugin extends Plugin {
 
 		// Reveal the leaf in case it is in a collapsed sidebar
 		if (leaf) {
-			workspace.revealLeaf(leaf);
+			await workspace.revealLeaf(leaf);
 		}
 	}
 }
 
 class LocalLLMSettingTab extends PluginSettingTab {
 	plugin: LocalLLMPlugin;
+	private modelDropdown?: DropdownComponent;
+	private embeddingModelDropdown?: DropdownComponent;
 
 	constructor(app: App, plugin: LocalLLMPlugin) {
 		super(app, plugin);
@@ -449,7 +475,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					const val = parseFloat((e.target as HTMLInputElement).value);
 					if (valueLabel) valueLabel.textContent = opts.format ? opts.format(val) : val.toString();
 				});
-				valueLabel = document.createElement('span');
+				valueLabel = createSpan();
 				valueLabel.className = 'local-llm-slider-value';
 				valueLabel.textContent = opts.format ? opts.format(opts.value) : opts.value.toString();
 				slider.sliderEl.parentElement?.appendChild(valueLabel);
@@ -511,7 +537,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				});
 
 				// Store reference to dropdown for dynamic updates
-				(this as any).modelDropdown = dropdown;
+				this.modelDropdown = dropdown;
 			});
 
 		// Add refresh models button
@@ -524,8 +550,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 
 		// Load models automatically when settings are displayed
 		// Use setTimeout to ensure the dropdown is fully initialized first
-		setTimeout(() => {
-			this.loadAvailableModels();
+		activeWindow.setTimeout(() => {
+			void this.loadAvailableModels();
 		}, 0);
 
 		addStyledSlider(
@@ -569,9 +595,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 		});
 		systemPromptTextArea.value = this.plugin.settings.systemPrompt;
 
-		systemPromptTextArea.addEventListener('input', async () => {
-			this.plugin.settings.systemPrompt = systemPromptTextArea.value;
-			await this.plugin.saveSettings();
+		systemPromptTextArea.addEventListener('input', () => {
+			void (async () => {
+				this.plugin.settings.systemPrompt = systemPromptTextArea.value;
+				await this.plugin.saveSettings();
+			})();
 		});
 
 		new Setting(containerEl).setName('Search').setHeading();
@@ -685,7 +713,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						this.plugin.notifyChatViewsOfRAGComplete();
 					} catch (error) {
 						LoggingUtility.error('RAG update failed:', error);
-						new Notice(`RAG database update failed: ${error.message}`);
+						new Notice(`RAG database update failed: ${getErrorMessage(error)}`);
 					} finally {
 						button.setButtonText('Smart Update');
 						button.setDisabled(false);
@@ -718,7 +746,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						new Notice('RAG database completely rebuilt!');
 					} catch (error) {
 						LoggingUtility.error('RAG rebuild failed:', error);
-						new Notice(`RAG database rebuild failed: ${error.message}`);
+						new Notice(`RAG database rebuild failed: ${getErrorMessage(error)}`);
 					} finally {
 						button.setButtonText('Force Rebuild');
 						button.setDisabled(false);
@@ -762,7 +790,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.embeddingEndpoint = value;
 					await this.plugin.saveSettings();
-					this.loadAvailableEmbeddingModels();
+					await this.loadAvailableEmbeddingModels();
 				}));
 
 		// Embedding model dropdown setting
@@ -779,7 +807,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 
-				(this as any).embeddingModelDropdown = dropdown;
+				this.embeddingModelDropdown = dropdown;
 			});
 
 		embeddingModelSetting.addButton(button => button
@@ -789,8 +817,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				await this.loadAvailableEmbeddingModels();
 			}));
 
-		setTimeout(() => {
-			this.loadAvailableEmbeddingModels();
+		activeWindow.setTimeout(() => {
+			void this.loadAvailableEmbeddingModels();
 		}, 0);
 
 
@@ -824,7 +852,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 						}
 					} catch (error) {
 						LoggingUtility.error('Embedding test failed:', error);
-						new Notice(`Embedding test failed: ${error.message}`);
+						new Notice(`Embedding test failed: ${getErrorMessage(error)}`);
 					} finally {
 						button.setButtonText('Test Embedding');
 						button.setDisabled(false);
@@ -868,10 +896,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 					} catch (error) {
 						LoggingUtility.error('Image processing failed:', error);
 						// Show user-friendly error message for vision model issues
-						if (error.message.includes('vision capabilities')) {
+						const errorMessage = getErrorMessage(error);
+						if (errorMessage.includes('vision capabilities')) {
 							new Notice('Vision model required: your current LLM model does not support image processing. Please switch to a vision model like Gemma 4 in LM Studio and try again.', 8000);
 						} else {
-							new Notice(`Image processing failed: ${error.message}`);
+							new Notice(`Image processing failed: ${errorMessage}`);
 						}
 					} finally {
 						button.setButtonText('Process Images');
@@ -908,7 +937,8 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			cls: 'mod-cta'
 		});
 
-		testButton.addEventListener('click', async () => {
+		testButton.addEventListener('click', () => {
+			void (async () => {
 			testButton.setText('Testing...');
 			testButton.disabled = true;
 
@@ -942,10 +972,11 @@ class LocalLLMSettingTab extends PluginSettingTab {
 				}
 			} catch (error) {
 				LoggingUtility.error('Connection test failed:', error);
-				new Notice(`Connection failed: ${error.message}`);
+				new Notice(`Connection failed: ${getErrorMessage(error)}`);
 				testButton.setText('Test connection');
 				testButton.disabled = false;
 			}
+			})();
 		});
 
 		// Add spacing between buttons
@@ -970,7 +1001,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 	 * Load available models from the LM Studio /v1/models endpoint
 	 */
 	private async loadAvailableModels(): Promise<void> {
-		const dropdown = (this as any).modelDropdown;
+		const dropdown = this.modelDropdown;
 		if (!dropdown) return;
 
 		try {
@@ -1038,7 +1069,7 @@ class LocalLLMSettingTab extends PluginSettingTab {
 	 * Falls back to the current default embedding model when no embedding models are returned.
 	 */
 	private async loadAvailableEmbeddingModels(): Promise<void> {
-		const dropdown = (this as any).embeddingModelDropdown;
+		const dropdown = this.embeddingModelDropdown;
 		if (!dropdown) return;
 
 		const currentOrDefaultModel = this.plugin.settings.embeddingModel || DEFAULT_SETTINGS.embeddingModel;
@@ -1059,7 +1090,9 @@ class LocalLLMSettingTab extends PluginSettingTab {
 			dropdown.selectEl.empty();
 
 			if (models.length > 0) {
-				models.forEach(model => dropdown.addOption(model, model));
+				models.forEach(model => {
+					dropdown.addOption(model, model);
+				});
 
 				if (models.includes(currentOrDefaultModel)) {
 					dropdown.setValue(currentOrDefaultModel);

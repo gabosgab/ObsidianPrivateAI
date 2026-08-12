@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS: LocalLLMSettings = {
 };
 
 export class SettingsManager {
-	private static instance: SettingsManager;
+	private static instance?: SettingsManager;
 	private plugin: Plugin;
 	private settings: LocalLLMSettings;
 	private settingsChangeCallbacks: (() => void)[] = [];
@@ -99,8 +99,11 @@ export class SettingsManager {
 
 	public async loadSettings(): Promise<void> {
 		try {
-			const loadedData = await this.plugin.loadData();
-			this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+			const loadedData = await (this.plugin.loadData() as Promise<unknown>);
+			const settings = typeof loadedData === 'object' && loadedData !== null
+				? loadedData as Partial<LocalLLMSettings>
+				: {};
+			this.settings = { ...DEFAULT_SETTINGS, ...settings };
 			LoggingUtility.log('Settings loaded:', this.settings);
 		} catch (error) {
 			LoggingUtility.error('Failed to load settings:', error);
@@ -160,7 +163,7 @@ export class SettingsManager {
 	public static async cleanup(): Promise<void> {
 		if (SettingsManager.instance) {
 			SettingsManager.instance.settingsChangeCallbacks = [];
-			SettingsManager.instance = undefined as any;
+			SettingsManager.instance = undefined;
 		}
 	}
 } 

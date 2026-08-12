@@ -1,5 +1,4 @@
 import { App, ProgressBarComponent } from 'obsidian';
-import { LoggingUtility } from '../utils/LoggingUtility';
 
 export class RAGProgressDialog {
 	private app: App;
@@ -33,24 +32,24 @@ export class RAGProgressDialog {
 	 */
 	private createFloatingDialog() {
 		// Create main container
-		this.containerEl = document.body.createEl('div', {
+		this.containerEl = activeDocument.body.createDiv({
 			cls: 'rag-progress-floating-dialog'
 		});
 
 		// Title with drag handle
-		const titleEl = this.containerEl.createEl('div', {
+		const titleEl = this.containerEl.createDiv({
 			cls: 'rag-progress-title',
 			text: 'Building Semantic Search Index'
 		});
 
 		// Message
-		this.messageEl = this.containerEl.createEl('div', {
+		this.messageEl = this.containerEl.createDiv({
 			text: 'Preparing...',
 			cls: 'rag-progress-message'
 		});
 
 		// Progress bar container
-		const progressContainer = this.containerEl.createEl('div', {
+		const progressContainer = this.containerEl.createDiv({
 			cls: 'rag-progress-container'
 		});
 
@@ -59,7 +58,7 @@ export class RAGProgressDialog {
 		this.progressBar.setValue(0);
 
 		// Button container
-		const buttonContainer = this.containerEl.createEl('div', {
+		const buttonContainer = this.containerEl.createDiv({
 			cls: 'rag-progress-buttons'
 		});
 
@@ -81,7 +80,7 @@ export class RAGProgressDialog {
 			text: 'Close',
 			cls: 'mod-cta'
 		});
-		this.closeButton.style.display = 'none';
+		this.closeButton.addClass('rag-progress-button-hidden');
 		
 		this.closeButton.addEventListener('click', () => {
 			this.close();
@@ -98,7 +97,7 @@ export class RAGProgressDialog {
 	 * Add minimize button to title bar
 	 */
 	private addMinimizeButton(titleEl: HTMLElement) {
-		const minimizeBtn = titleEl.createEl('span', {
+		const minimizeBtn = titleEl.createSpan({
 			text: '−',
 			cls: 'rag-progress-minimize'
 		});
@@ -156,8 +155,8 @@ export class RAGProgressDialog {
 			
 			// Keep within viewport bounds
 			const rect = this.containerEl.getBoundingClientRect();
-			newX = Math.max(0, Math.min(newX, window.innerWidth - rect.width));
-			newY = Math.max(0, Math.min(newY, window.innerHeight - rect.height));
+			newX = Math.max(0, Math.min(newX, activeWindow.innerWidth - rect.width));
+			newY = Math.max(0, Math.min(newY, activeWindow.innerHeight - rect.height));
 			
 			// Use CSS custom properties for positioning
 			this.containerEl.style.setProperty('--dialog-left', `${newX}px`);
@@ -173,13 +172,13 @@ export class RAGProgressDialog {
 		};
 
 		titleEl.addEventListener('mousedown', onMouseDown);
-		document.addEventListener('mousemove', onMouseMove);
-		document.addEventListener('mouseup', onMouseUp);
+		activeDocument.addEventListener('mousemove', onMouseMove);
+		activeDocument.addEventListener('mouseup', onMouseUp);
 
 		// Store cleanup functions
 		this.cleanupFunctions.push(() => {
-			document.removeEventListener('mousemove', onMouseMove);
-			document.removeEventListener('mouseup', onMouseUp);
+			activeDocument.removeEventListener('mousemove', onMouseMove);
+			activeDocument.removeEventListener('mouseup', onMouseUp);
 		});
 	}
 
@@ -209,11 +208,11 @@ export class RAGProgressDialog {
 		this.messageEl.setText(message || 'Complete!');
 		
 		// Hide cancel button, show close button
-		this.cancelButton.style.display = 'none';
-		this.closeButton.style.display = 'inline-block';
+		this.cancelButton.addClass('rag-progress-button-hidden');
+		this.closeButton.removeClass('rag-progress-button-hidden');
 		
 		// Auto-close after 5 seconds
-		setTimeout(() => {
+		activeWindow.setTimeout(() => {
 			if (this.isVisible) {
 				this.close();
 			}
@@ -231,8 +230,8 @@ export class RAGProgressDialog {
 		this.messageEl.classList.add('error');
 		
 		// Hide cancel button, show close button
-		this.cancelButton.style.display = 'none';
-		this.closeButton.style.display = 'inline-block';
+		this.cancelButton.addClass('rag-progress-button-hidden');
+		this.closeButton.removeClass('rag-progress-button-hidden');
 	}
 
 	/**

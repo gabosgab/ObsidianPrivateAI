@@ -1,5 +1,6 @@
 import { LoggingUtility } from '../utils/LoggingUtility';
 import { requestUrl } from 'obsidian';
+import { getErrorMessage, isAbortError } from '../utils/ErrorUtils';
 
 export interface LLMConfig {
 	apiEndpoint: string;
@@ -11,13 +12,15 @@ export interface LLMConfig {
 }
 
 // Centralized error message function
-function getLLMErrorMessage(error: Error, endpoint?: string): string {
+function getLLMErrorMessage(error: unknown): string {
+	const errorMessage = getErrorMessage(error);
+	const errorName = error instanceof Error ? error.name : '';
 	// Check if it's a network/connection error
-	if (error.message.includes('Failed to fetch') ||
-		error.message.includes('NetworkError') ||
-		error.message.includes('ERR_NETWORK') ||
-		error.message.includes('ERR_CONNECTION_REFUSED') ||
-		error.message.includes('ERR_EMPTY_RESPONSE')) {
+	if (errorMessage.includes('Failed to fetch') ||
+		errorMessage.includes('NetworkError') ||
+		errorMessage.includes('ERR_NETWORK') ||
+		errorMessage.includes('ERR_CONNECTION_REFUSED') ||
+		errorMessage.includes('ERR_EMPTY_RESPONSE')) {
 		return `It appears your local LLM server is not running.
 * Check that LM Studio is running and a model is loaded
 * Check that you started local server
@@ -26,13 +29,13 @@ function getLLMErrorMessage(error: Error, endpoint?: string): string {
 	}
 
 	// Check if it's a timeout error
-	if (error.name === 'AbortError' && error.message.includes('timeout')) {
+	if (errorName === 'AbortError' && errorMessage.includes('timeout')) {
 		return 'Request cancelled';
 	}
 
 	// Check if it's a server error (5xx)
-	if (error.message.includes('500') || error.message.includes('502') ||
-		error.message.includes('503') || error.message.includes('504')) {
+	if (errorMessage.includes('500') || errorMessage.includes('502') ||
+		errorMessage.includes('503') || errorMessage.includes('504')) {
 		return 'Is your LLM server running? 500 error';
 	}
 
@@ -118,7 +121,7 @@ export interface LMStudioRestModelsResponse {
 	models: LMStudioRestModel[];
 }
 
-export type StreamCallback = (chunk: string, isComplete: boolean) => void;
+export type StreamCallback = (chunk: string, isComplete: boolean) => Promise<void>;
 
 export class LLMService {
 	private config: LLMConfig;
@@ -257,7 +260,7 @@ export class LLMService {
 
 			await this.makeStreamingAPIRequest(request, callback, abortSignal);
 		} catch (error) {
-			if (error.name === 'AbortError') {
+			if (isAbortError(error)) {
 				LoggingUtility.log('Request was cancelled by user');
 				return;
 			}
@@ -289,12 +292,12 @@ export class LLMService {
 				throw new Error(`API request failed: ${response.status} - ${errorText}`);
 			}
 
-			const responseData = response.json;
+			const responseData = response.json as ChatResponse;
 			LoggingUtility.log('Response data:', responseData);
 			return responseData;
 		} catch (error) {
 			LoggingUtility.error('Fetch error details:', error);
-			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
+			throw new Error(getLLMErrorMessage(error));
 		}
 	}
 
@@ -311,7 +314,7 @@ export class LLMService {
 
 			const headers = this.buildHeaders();
 
-			const response = await fetch(this.config.apiEndpoint, {
+			const response = await window.fetch(this.config.apiEndpoint, {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(request),
@@ -342,10 +345,10 @@ export class LLMService {
 					if (done) {
 						// Process any remaining buffer
 						if (buffer.trim() && !isCompleted) {
-							this.processStreamChunk(buffer, callback);
+							await this.processStreamChunk(buffer, callback);
 						}
 						if (!isCompleted) {
-							callback('', true); // Signal completion
+							await callback('', true); // Signal completion
 							isCompleted = true;
 						}
 						break;
@@ -364,15 +367,15 @@ export class LLMService {
 
 							if (data === '[DONE]') {
 								if (!isCompleted) {
-									callback('', true); // Signal completion
+									await callback('', true); // Signal completion
 									isCompleted = true;
 								}
 								return;
 							}
 
 							try {
-								const chunk: StreamChunk = JSON.parse(data);
-								this.processStreamChunk(chunk, callback, isCompleted);
+								const chunk = JSON.parse(data) as StreamChunk;
+								await this.processStreamChunk(chunk, callback, isCompleted);
 								// Check if completion was signaled by processStreamChunk
 								if (chunk.choices?.some(choice => choice.finish_reason)) {
 									isCompleted = true;
@@ -390,20 +393,20 @@ export class LLMService {
 			LoggingUtility.error('Streaming fetch error details:', error);
 
 			// Handle specific error types
-			if (error.name === 'AbortError') {
+			if (isAbortError(error)) {
 				// Re-throw as AbortError so the caller can detect user cancellation
 				throw error;
 			}
 
-			throw new Error(getLLMErrorMessage(error, this.config.apiEndpoint));
+			throw new Error(getLLMErrorMessage(error));
 		}
 	}
 
-	private processStreamChunk(chunk: StreamChunk | string, callback: StreamCallback, isCompleted: boolean = false): void {
+	private async processStreamChunk(chunk: StreamChunk | string, callback: StreamCallback, isCompleted: boolean = false): Promise<void> {
 		if (typeof chunk === 'string') {
 			// Handle raw string chunks (fallback)
 			if (chunk.trim() && !isCompleted) {
-				callback(chunk, false);
+				await callback(chunk, false);
 			}
 			return;
 		}
@@ -411,11 +414,11 @@ export class LLMService {
 		// Handle structured chunks
 		for (const choice of chunk.choices) {
 			if (choice.delta?.content && !isCompleted) {
-				callback(choice.delta.content, false);
+				await callback(choice.delta.content, false);
 			}
 
 			if (choice.finish_reason && !isCompleted) {
-				callback('', true); // Signal completion
+				await callback('', true); // Signal completion
 				return;
 			}
 		}
@@ -466,7 +469,7 @@ export class LLMService {
 			LoggingUtility.error('Connection test failed:', error);
 			return {
 				success: false,
-				error: getLLMErrorMessage(error, this.config.apiEndpoint)
+				error: getLLMErrorMessage(error)
 			};
 		}
 	}

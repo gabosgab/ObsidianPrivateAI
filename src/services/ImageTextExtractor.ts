@@ -1,6 +1,7 @@
-import { TFile, Notice } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { LLMService } from './LLMService';
 import { LoggingUtility } from '../utils/LoggingUtility';
+import { getErrorMessage } from '../utils/ErrorUtils';
 
 export interface ImageTextExtractionResult {
 	success: boolean;
@@ -20,11 +21,11 @@ export interface VisionModelCapabilities {
 
 export class ImageTextExtractor {
 	private llmService: LLMService;
-	private app: any; // App instance for file operations
+	private app: App;
 	private visionCapabilities: VisionModelCapabilities | null = null;
 	private capabilitiesChecked: boolean = false;
 
-	constructor(llmService: LLMService, app: any) {
+	constructor(llmService: LLMService, app: App) {
 		this.llmService = llmService;
 		this.app = app;
 	}
@@ -41,8 +42,6 @@ export class ImageTextExtractor {
 			LoggingUtility.log('Checking vision capabilities of LLM model...');
 
 			// Try to get available models first
-			const availableModels = await this.llmService.getAvailableModels();
-
 			// Try a simple vision test with a minimal prompt
 			const testResult = await this.testVisionCapability();
 			this.visionCapabilities = testResult;
@@ -128,7 +127,7 @@ export class ImageTextExtractor {
 			return {
 				success: false,
 				extractedText: '',
-				error: `Extraction failed: ${error.message}`,
+				error: `Extraction failed: ${getErrorMessage(error)}`,
 				modelCapabilities: this.visionCapabilities || { supportsVision: false }
 			};
 		}
@@ -155,7 +154,7 @@ export class ImageTextExtractor {
 			return `data:${mimeType};base64,${base64}`;
 		} catch (error) {
 			LoggingUtility.error('Error reading image file as base64:', error);
-			throw new Error(`Failed to read image file: ${error.message}`);
+			throw new Error(`Failed to read image file: ${getErrorMessage(error)}`);
 		}
 	}
 

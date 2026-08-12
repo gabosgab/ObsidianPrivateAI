@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "version": "node version-bump.mjs",
@@ -35,15 +36,19 @@
     "sql.js": "^1.14.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.19.1",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "@types/sql.js": "^1.4.11",
     "esbuild": "^0.25.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.4.0",
+    "globals": "^17.6.0",
     "jsdom": "^28.1.0",
     "obsidian": "^1.8.7",
     "tslib": "^2.8.1",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.59.1",
     "vitest": "^4.0.18"
   }
 }
