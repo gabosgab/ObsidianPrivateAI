@@ -96,8 +96,8 @@
 }
 
 .local-llm-message-user .local-llm-message-content {
-	user-select: text !important;
-	-webkit-user-select: text !important;
+	user-select: text;
+	-webkit-user-select: text;
 	cursor: text;
 }
 
@@ -358,8 +358,8 @@
 
 .local-llm-stop-button {
 	padding: 8px 16px;
-	background-color: #dc3545 !important;
-	color: white !important;
+	background-color: #dc3545;
+	color: white;
 	border: none;
 	border-radius: 6px;
 	cursor: pointer;
@@ -371,7 +371,7 @@
 }
 
 .local-llm-stop-button:hover:not(:disabled) {
-	background-color: #c82333 !important;
+	background-color: #c82333;
 }
 
 .local-llm-stop-button:disabled {
@@ -553,7 +553,7 @@
 	margin-right: 8px;
 	cursor: pointer;
 	color: var(--text-normal);
-	transition: all 0.2s;
+	transition: background-color 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
 	display: flex;
 	align-items: center;
 	font-size: 0.8em;
@@ -717,10 +717,10 @@
 }
 
 .local-llm-copy-button.copied {
-	background-color: transparent !important;
+	background-color: transparent;
 	/* Let pseudo handle background */
 	color: var(--text-on-accent);
-	opacity: 1 !important;
+	opacity: 1;
 	position: absolute;
 	/* Already absolute but reinforcing for pseudo */
 	z-index: 10;
@@ -805,6 +805,8 @@
 
 /* Context menu */
 .local-llm-context-menu {
+	position: fixed;
+	z-index: 1000;
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 6px;
@@ -846,7 +848,7 @@
 	font-size: 12px;
 	color: var(--text-normal);
 	cursor: pointer;
-	transition: all 0.2s ease;
+	transition: background-color 0.2s ease, border-color 0.2s ease;
 	min-width: 100px;
 }
 
@@ -876,7 +878,7 @@
 	width: 22px;
 	height: 22px;
 	border-radius: 50%;
-	background: #222;
+	background: #222222;
 	border: 3px solid var(--interactive-accent);
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	transition: background 0.2s, border 0.2s;
@@ -890,7 +892,7 @@
 	width: 22px;
 	height: 22px;
 	border-radius: 50%;
-	background: #222;
+	background: #222222;
 	border: 3px solid var(--interactive-accent);
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	transition: background 0.2s, border 0.2s;
@@ -904,7 +906,7 @@
 	width: 22px;
 	height: 22px;
 	border-radius: 50%;
-	background: #222;
+	background: #222222;
 	border: 3px solid var(--interactive-accent);
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	transition: background 0.2s, border 0.2s;
@@ -1015,32 +1017,27 @@
 
 /* Add classes for dynamic styles */
 .local-llm-search-indicator-hidden {
-	display: none !important;
+	display: none;
 }
 
 .local-llm-search-indicator-visible {
-	display: block !important;
-}
-
-.local-llm-context-menu {
-	position: fixed;
-	z-index: 1000;
+	display: block;
 }
 
 .local-llm-stop-button-visible {
-	display: block !important;
+	display: block;
 }
 
 .local-llm-stop-button-hidden {
-	display: none !important;
+	display: none;
 }
 
 .local-llm-send-button-visible {
-	display: block !important;
+	display: block;
 }
 
 .local-llm-send-button-hidden {
-	display: none !important;
+	display: none;
 }
 
 .local-llm-note-clickable {
@@ -1053,18 +1050,19 @@
 
 /* RAG Progress Floating Dialog Styles */
 .rag-progress-floating-dialog {
-	position: fixed !important;
+	position: fixed;
 	top: 20px;
 	right: 20px;
 	width: 350px;
-	z-index: 1000;
+	z-index: 1001;
 	font-family: var(--font-interface);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 	backdrop-filter: blur(8px);
-	transition: all 0.2s ease;
+	transition: box-shadow 0.2s ease, height 0.2s ease, width 0.2s ease;
+	animation: ragDialogSlideIn 0.3s ease-out;
 	padding: 16px;
 	--dialog-left: auto;
 	--dialog-top: auto;
@@ -1155,7 +1153,7 @@
 	border: none;
 	font-size: 13px;
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .rag-progress-buttons button.mod-warning {
@@ -1176,11 +1174,6 @@
 	background: var(--interactive-accent-hover);
 }
 
-/* Animation for smooth entry */
-.rag-progress-floating-dialog {
-	animation: ragDialogSlideIn 0.3s ease-out;
-}
-
 @keyframes ragDialogSlideIn {
 	from {
 		transform: translateX(100%);
@@ -1196,11 +1189,7 @@
 /* Minimize state animation */
 .rag-progress-floating-dialog.minimized {
 	transition: width 0.2s ease, height 0.2s ease;
-}
-
-/* Make sure the dialog stays above everything */
-.rag-progress-floating-dialog {
-	z-index: 1001;
+	width: 200px;
 }
 
 /* Dark mode adjustments */
@@ -1212,25 +1201,20 @@
 	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
-/* Minimized state */
-.rag-progress-floating-dialog.minimized {
-	width: 200px !important;
-}
-
 .rag-progress-floating-dialog.minimized .rag-progress-content {
 	display: none;
 }
 
 /* Error state */
 .rag-progress-message.error {
-	color: var(--text-error) !important;
+	color: var(--text-error);
 }
 
 /* RAG Status Area */
 .local-llm-rag-status-area {
 	border-top: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
-	transition: all 0.3s ease;
+	transition: background-color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
 	overflow: hidden;
 }
 
