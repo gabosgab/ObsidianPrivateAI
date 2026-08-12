@@ -31,14 +31,14 @@
   "homepage": "https://github.com/gabosgab/ObsidianPrivateAI#readme",
   "dependencies": {
     "@webreflection/sql.js": "^0.3.4",
-    "crc-32": "^1.2.2"
+    "crc-32": "^1.2.2",
+    "sql.js": "^1.14.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.19.1",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "builtin-modules": "^3.3.0",
     "esbuild": "^0.25.5",
     "jsdom": "^28.1.0",
     "obsidian": "^1.8.7",
