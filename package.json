@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "test": "vitest run",
+    "test": "npm run test:sqljs && npm run test:better-sqlite3",
+    "test:sqljs": "vitest run -c vitest.sqljs.config.ts",
+    "test:better-sqlite3": "vitest run -c vitest.better-sqlite3.config.ts",
     "test:watch": "vitest",
     "version": "node version-bump.mjs",
     "release": "npm run build && node version-bump.mjs"
@@ -38,10 +40,12 @@
     "@types/node": "^20.19.1",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "better-sqlite3": "^12.6.2",
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.25.5",
     "jsdom": "^28.1.0",
     "obsidian": "^1.8.7",
+    "sqlite": "^5.1.1",
     "tslib": "^2.8.1",
     "typescript": "^5.8.3",
     "vitest": "^4.0.18"
