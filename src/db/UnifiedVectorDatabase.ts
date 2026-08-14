@@ -523,10 +523,34 @@ export class UnifiedVectorDatabase {
 	 * Get files that need updating based on file stats
 	 */
 	getFilesNeedingUpdate(fileStats: Map<string, { checksum: string; lastModified: number; size: number }>): string[] {
-		const needsUpdate: string[] = [];
+		if (!this.db) {
+			throw new Error('Database not initialized. Call load() first.');
+		}
 
+		const needsUpdate: string[] = [];
+		const allFilePaths = Array.from(fileStats.keys());
+		const dbChecksums = new Map<string, string>();
+
+		// Batch queries to avoid N+1 query issue and SQLite parameter limits
+		const BATCH_SIZE = 500;
+		for (let i = 0; i < allFilePaths.length; i += BATCH_SIZE) {
+			const batch = allFilePaths.slice(i, i + BATCH_SIZE);
+			const placeholders = batch.map(() => '?').join(',');
+
+			const stmt = this.db.prepare(`SELECT DISTINCT file_path, file_checksum FROM documents WHERE file_path IN (${placeholders})`);
+			stmt.bind(batch);
+
+			while (stmt.step()) {
+				const row = stmt.getAsObject();
+				dbChecksums.set(row.file_path as string, row.file_checksum as string);
+			}
+			stmt.free();
+		}
+
+		// Check which files need an update
 		for (const [filePath, stats] of fileStats) {
-			if (this.fileNeedsUpdate(filePath, stats.checksum, stats.lastModified, stats.size)) {
+			const dbChecksum = dbChecksums.get(filePath);
+			if (!dbChecksum || dbChecksum !== stats.checksum) {
 				needsUpdate.push(filePath);
 			}
 		}
