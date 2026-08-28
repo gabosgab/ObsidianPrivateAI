@@ -8,6 +8,7 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "version": "node version-bump.mjs",
     "release": "npm run build && node version-bump.mjs"
   },
@@ -34,6 +35,7 @@
     "crc-32": "^1.2.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.19.1",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
